@@ -198,29 +198,54 @@ def collect_usgs():
             s[key + "Time"] = t
 
     sites = {k: s for k, s in sites.items() if "height" in s or "temp" in s}
+
+    # Reuse gauge names from the last run so we don't look them up every time
+    old_names = {}
+    try:
+        with open("data.json") as fh:
+            for o in json.load(fh).get("sites", []):
+                if o.get("name") and o.get("name") != o.get("id"):
+                    old_names[o["id"]] = o["name"]
+    except Exception:
+        pass
+
+    start = (now - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    end = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+    with_history = 0
     for s in sites.values():
-        time.sleep(0.3)
-        try:
-            loc = usgs(f"monitoring-locations/items/{urllib.parse.quote(s['id'])}", {})
-            s["name"] = (loc.get("properties") or {}).get("monitoring_location_name") or s["id"]
-        except Exception as e:
-            s["name"] = s["id"]
+        s["name"] = old_names.get(s["id"])
+        if not s["name"]:
+            time.sleep(0.3)
+            try:
+                loc = usgs(f"monitoring-locations/items/{urllib.parse.quote(s['id'])}", {})
+                s["name"] = (loc.get("properties") or {}).get("monitoring_location_name") or s["id"]
+            except Exception:
+                s["name"] = s["id"]
         if "height" not in s:
             continue
+        time.sleep(0.3)
         try:
-            data = usgs("continuous/items", {"monitoring_location_id": s["id"], "parameter_code": "00065",
-                                             "datetime": "P7D", "limit": 2000})
             pts = []
-            for f in data.get("features", []):
-                pr = f.get("properties", {})
-                try:
-                    pts.append((parse_time(pr["time"]), float(pr["value"])))
-                except Exception:
-                    pass
+            data = usgs("continuous/items", {"monitoring_location_id": s["id"], "parameter_code": "00065",
+                                             "datetime": f"{start}/{end}", "limit": 10000})
+            for _ in range(5):
+                for f in data.get("features", []):
+                    pr = f.get("properties", {})
+                    try:
+                        pts.append((parse_time(pr["time"]), float(pr["value"])))
+                    except Exception:
+                        pass
+                nxt = next((l.get("href") for l in data.get("links", []) if l.get("rel") == "next"), None)
+                if not nxt:
+                    break
+                data = get(nxt)
+            if pts:
+                with_history += 1
             s["change"] = change_24h(pts)
             s["series"] = hourly(pts)
         except Exception as e:
             errors.append(f"USGS history {s['id']}: {e}")
+    print(f"USGS history: got 7 days of readings for {with_history} gauges")
 
     tables = usgs_normals(list(sites.keys()))
     for s in sites.values():
