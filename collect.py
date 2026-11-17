@@ -415,7 +415,7 @@ def des_values(ts_id, start, end):
     pts = []
     for r in rows or []:
         try:
-            if r.get("num_value") is None:
+            if not isinstance(r, dict) or r.get("num_value") is None:
                 continue
             pts.append((parse_time(r["datetime"]), float(r["num_value"])))
         except Exception:
@@ -451,6 +451,8 @@ def collect_nhdes():
 
     out = []
     for st in stations or []:
+        if not isinstance(st, dict):
+            continue
         pr = st.get("properties") or {}
         code = pr.get("code")
         if not code or pr.get("enabled") is False:
@@ -470,6 +472,8 @@ def collect_nhdes():
 
         best = {}
         for ts in tslist or []:
+            if not isinstance(ts, dict) or not ts.get("id"):
+                continue
             tcode = (ts.get("code") or "").upper()
             if ".USGS." in tcode or ".NWS." in tcode or ".USACE." in tcode:
                 continue  # already on the map from the original agency
@@ -542,15 +546,30 @@ def collect_nhdes():
 
 
 if __name__ == "__main__":
-    sites = collect_usgs()
+    import traceback
+
+    def safe(label, fn):
+        try:
+            return fn()
+        except Exception as e:
+            errors.append(f"{label} skipped: {e}")
+            print(f"Warning: {label} failed and was skipped. Details:")
+            traceback.print_exc()
+            return []
+
+    sites = safe("USGS", collect_usgs)
     print(f"USGS: {len(sites)} gauges")
-    corps = collect_corps()
+    corps = safe("Army Corps", collect_corps)
     print(f"Army Corps: {len(corps)} stations")
-    des = collect_nhdes()
+    des = safe("NHDES", collect_nhdes)
     print(f"NHDES: {len(des)} stations "
           f"({sum(1 for x in des if 'temp' in x)} with water temp, {sum(1 for x in des if 'normal' in x)} compared to normal)")
-    result = {"updated": now.isoformat(), "errors": errors[:50], "sites": sites + corps + des}
-    with open("data.json", "w") as fh:
-        json.dump(result, fh, separators=(",", ":"))
+    all_sites = sites + corps + des
+    if not all_sites:
+        print("Nothing collected this time; keeping the previous data.json.")
+    else:
+        result = {"updated": now.isoformat(), "errors": errors[:50], "sites": all_sites}
+        with open("data.json", "w") as fh:
+            json.dump(result, fh, separators=(",", ":"))
     for e in errors[:20]:
         print("Warning:", e)
