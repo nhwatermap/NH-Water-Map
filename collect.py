@@ -71,6 +71,96 @@ def change_24h(points):
     return round(v_last - best[1], 3)
 
 
+def pct_from_table(value, table):
+    """Estimate where a value falls (0-100) given [(percentile, value)] pairs."""
+    pts = sorted({(p, v) for p, v in table if v is not None}, key=lambda x: x[1])
+    if len(pts) < 3:
+        return None
+    if value <= pts[0][1]:
+        return max(0.0, pts[0][0] - 1)
+    if value >= pts[-1][1]:
+        return min(100.0, pts[-1][0] + 1)
+    for (p1, v1), (p2, v2) in zip(pts, pts[1:]):
+        if v1 <= value <= v2:
+            return p1 if v2 == v1 else p1 + (p2 - p1) * (value - v1) / (v2 - v1)
+    return None
+
+
+def pct_from_history(value, history):
+    if len(history) < 50:
+        return None
+    below = sum(1 for h in history if h < value)
+    return 100.0 * below / len(history)
+
+
+def category(pct):
+    if pct is None:
+        return None
+    if pct < 10: return "much-below"
+    if pct < 25: return "below"
+    if pct <= 75: return "normal"
+    if pct <= 90: return "above"
+    return "much-above"
+
+
+def walk_stats(node, ctx, out):
+    """Pull day-of-year statistics out of the USGS reply, whatever its exact layout."""
+    if isinstance(node, list):
+        for n in node:
+            walk_stats(n, ctx, out)
+        return
+    if not isinstance(node, dict):
+        return
+    ctx = dict(ctx)
+    for k in ("monitoring_location_id", "parameter_code", "time_of_year_type"):
+        if node.get(k):
+            ctx[k] = node[k]
+    if "percentiles" in node and isinstance(node.get("values"), list) and isinstance(node["percentiles"], list):
+        for pc, v in zip(node["percentiles"], node["values"]):
+            out.append((ctx, pc, v))
+    if "value" in node and ("computation" in node or "percentile" in node or "computation_type" in node):
+        comp = str(node.get("computation") or node.get("computation_type") or "").lower()
+        pc = node.get("percentile")
+        if pc is None:
+            pc = {"median": 50, "minimum": 0, "maximum": 100}.get(comp)
+        if pc is not None and comp not in ("arithmetic_mean", "mean"):
+            out.append((ctx, pc, node["value"]))
+    for v in node.values():
+        if isinstance(v, (dict, list)):
+            walk_stats(v, ctx, out)
+
+
+def usgs_normals(site_ids):
+    """Day-of-year percentiles for today's date, for flow and water level."""
+    today = now.astimezone(timezone(timedelta(hours=-5))).strftime("%m-%d")
+    tables = {}
+    for i in range(0, len(site_ids), 20):
+        batch = site_ids[i:i + 20]
+        params = [("monitoring_location_id", sid) for sid in batch]
+        params += [("parameter_code", "00060"), ("parameter_code", "00065"),
+                   ("start_date", today), ("end_date", today), ("f", "json")]
+        if USGS_KEY:
+            params.append(("api_key", USGS_KEY))
+        try:
+            data = get("https://api.waterdata.usgs.gov/statistics/v0/observationNormals?" +
+                       urllib.parse.urlencode(params))
+        except Exception as e:
+            errors.append(f"USGS normals: {e}")
+            continue
+        rows = []
+        walk_stats(data, {}, rows)
+        for ctx, pc, v in rows:
+            if ctx.get("time_of_year_type", "day_of_year") != "day_of_year":
+                continue
+            try:
+                tables.setdefault((ctx.get("monitoring_location_id"), ctx.get("parameter_code")), []).append(
+                    (float(pc), float(v)))
+            except (TypeError, ValueError):
+                pass
+        time.sleep(0.5)
+    return tables
+
+
 # ---------------- USGS ----------------
 def collect_usgs():
     sites = {}
@@ -123,6 +213,16 @@ def collect_usgs():
             s["series"] = hourly(pts)
         except Exception as e:
             errors.append(f"USGS history {s['id']}: {e}")
+
+    tables = usgs_normals(list(sites.keys()))
+    for s in sites.values():
+        for basis, code, key in (("flow", "00060", "flow"), ("level", "00065", "height")):
+            if s.get(key) is None or (s["id"], code) not in tables:
+                continue
+            pct = pct_from_table(s[key], tables[(s["id"], code)])
+            if pct is not None:
+                s["normal"] = {"pct": round(pct), "cat": category(pct), "basis": basis, "source": "USGS long-term records"}
+                break
     return list(sites.values())
 
 
@@ -162,10 +262,11 @@ def pick(names, params):
     return sorted(cands, key=score)[0]
 
 
-def corps_series(name, days=7):
+def corps_series(name, days=7, end=None):
+    end = end or now
     params = {"name": name, "office": CORPS_OFFICE, "unit": "EN",
-              "begin": (now - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ"),
-              "end": now.strftime("%Y-%m-%dT%H:%M:%SZ"), "page-size": 5000}
+              "begin": (end - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+              "end": end.strftime("%Y-%m-%dT%H:%M:%SZ"), "page-size": 5000}
     data = get(f"{CWMS}/timeseries?" + urllib.parse.urlencode(params), CORPS_JSON)
     pts = []
     for row in data.get("values") or []:
@@ -217,6 +318,25 @@ def collect_corps():
                     s["change"] = change_24h(pts)
                     s["series"] = hourly(pts)
                     s["levelLabel"] = "Pool elevation" if level.split(".")[1] == "Elev" else "Water level"
+                    # Normal for this time of year: readings within a week of today's date in each of the past 10 years
+                    history, years = [], 0
+                    for y in range(1, 11):
+                        try:
+                            mid = now.replace(year=now.year - y)
+                        except ValueError:
+                            mid = now.replace(year=now.year - y, day=28)
+                        try:
+                            past = corps_series(level, days=14, end=mid + timedelta(days=7))
+                        except Exception:
+                            past = []
+                        if past:
+                            years += 1
+                            history += [v for _, v in past]
+                        time.sleep(0.2)
+                    pct = pct_from_history(s["height"], history) if years >= 3 else None
+                    if pct is not None:
+                        s["normal"] = {"pct": round(pct), "cat": category(pct), "basis": "level",
+                                       "source": f"Army Corps readings, {years} past years"}
             except Exception as e:
                 errors.append(f"Army Corps {loc} level: {e}")
 
