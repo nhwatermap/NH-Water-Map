@@ -407,11 +407,30 @@ def collect_corps():
 DES = "https://nhdes.rtiamanzi.org/api"
 
 
+def des_list(url, max_pages=50):
+    """Get a list from NHDES, whether it comes plain, wrapped, or split into pages."""
+    items, pages = [], 0
+    while url and pages < max_pages:
+        data = get(url)
+        pages += 1
+        nxt = None
+        while isinstance(data, dict):
+            nxt = nxt or (data.get("next") if isinstance(data.get("next"), str) else None)
+            for key in ("features", "results", "data", "items"):
+                if key in data:
+                    data = data[key]
+                    break
+            else:
+                data = [data] if data.get("id") else []
+        items += [d for d in data if isinstance(d, dict)]
+        url = nxt
+    return items
+
+
 def des_values(ts_id, start, end):
     url = f"{DES}/timeseries/{ts_id}/values/?" + urllib.parse.urlencode({
         "start": start.strftime("%Y-%m-%dT%H:%M:%S"), "end": end.strftime("%Y-%m-%dT%H:%M:%S")})
-    data = get(url)
-    rows = data.get("results", data) if isinstance(data, dict) else data
+    rows = des_list(url, max_pages=20)
     pts = []
     for r in rows or []:
         try:
@@ -440,16 +459,17 @@ def des_kind(param):
 
 def collect_nhdes():
     try:
-        params = get(f"{DES}/parameters/")
-        params = params.get("results", params) if isinstance(params, dict) else params
-        pinfo = {p["id"]: p for p in params if isinstance(p, dict) and p.get("id")}
-        stations = get(f"{DES}/locations/?layer__code=STATIONS")
-        stations = stations.get("results", stations) if isinstance(stations, dict) else stations
+        params = des_list(f"{DES}/parameters/")
+        pinfo = {p["id"]: p for p in params if p.get("id")}
+        stations = des_list(f"{DES}/locations/?layer__code=STATIONS")
+        print(f"NHDES: station list has {len(stations)} stations, {len(pinfo)} reading types")
+        if not stations:
+            print("NHDES station list sample reply:", json.dumps(get(f"{DES}/locations/?layer__code=STATIONS"))[:600])
     except Exception as e:
         errors.append(f"NHDES station list: {e}")
         return []
 
-    out = []
+    out, own_ts, no_coords, skipped_agency = [], 0, 0, 0
     for st in stations or []:
         if not isinstance(st, dict):
             continue
@@ -461,11 +481,11 @@ def collect_nhdes():
             coords = st["geometry"]["coordinates"]
             lon, lat = (coords[0] if isinstance(coords[0], list) else coords)[:2]
         except Exception:
+            no_coords += 1
             continue
         time.sleep(0.2)
         try:
-            tslist = get(f"{DES}/timeseries/sparse/?" + urllib.parse.urlencode({"location__code": code}))
-            tslist = tslist.get("results", tslist) if isinstance(tslist, dict) else tslist
+            tslist = des_list(f"{DES}/timeseries/sparse/?" + urllib.parse.urlencode({"location__code": code}))
         except Exception as e:
             errors.append(f"NHDES {code} list: {e}")
             continue
@@ -476,6 +496,7 @@ def collect_nhdes():
                 continue
             tcode = (ts.get("code") or "").upper()
             if ".USGS." in tcode or ".NWS." in tcode or ".USACE." in tcode:
+                skipped_agency += 1
                 continue  # already on the map from the original agency
             param = pinfo.get(ts.get("parameter")) or {"name": ts.get("name", ""), "code": tcode.split(".")[2] if tcode.count(".") >= 2 else ""}
             kind = des_kind(param)
@@ -483,6 +504,7 @@ def collect_nhdes():
                 best[kind] = (ts["id"], param)
         if not best:
             continue
+        own_ts += 1
 
         s = {"id": f"NHDES-{code}", "source": "NHDES", "lat": lat, "lon": lon,
              "name": pr.get("name") or code, "desCode": code}
@@ -542,6 +564,8 @@ def collect_nhdes():
                 errors.append(f"NHDES {code} flow: {e}")
         if any(k in s for k in ("height", "temp", "flow")):
             out.append(s)
+    print(f"NHDES: {own_ts} stations have state readings, {skipped_agency} readings skipped as USGS/NWS/Army Corps copies, "
+          f"{no_coords} stations without a map location")
     return out
 
 
