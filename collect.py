@@ -403,12 +403,153 @@ def collect_corps():
     return out
 
 
+# ---------------- NHDES (state lakes and dams) ----------------
+DES = "https://nhdes.rtiamanzi.org/api"
+
+
+def des_values(ts_id, start, end):
+    url = f"{DES}/timeseries/{ts_id}/values/?" + urllib.parse.urlencode({
+        "start": start.strftime("%Y-%m-%dT%H:%M:%S"), "end": end.strftime("%Y-%m-%dT%H:%M:%S")})
+    data = get(url)
+    rows = data.get("results", data) if isinstance(data, dict) else data
+    pts = []
+    for r in rows or []:
+        try:
+            if r.get("num_value") is None:
+                continue
+            pts.append((parse_time(r["datetime"]), float(r["num_value"])))
+        except Exception:
+            pass
+    return sorted(pts)
+
+
+def des_kind(param):
+    """Sort an NHDES reading type into level, temperature, flow, or something we skip."""
+    code = (param.get("code") or "").upper()
+    name = (param.get("name") or "").lower()
+    if code in ("PELV", "LELV", "STG") or "elevation" in name or "lake level" in name or "stage" in name:
+        if "forecast" in name or "target" in name or "rule" in name:
+            return None
+        return "level"
+    if "water" in name and "temp" in name:
+        return "temp"
+    if code in ("QIN", "QOUT") or "discharge" in name or "outflow" in name:
+        return "flow"
+    return None
+
+
+def collect_nhdes():
+    try:
+        params = get(f"{DES}/parameters/")
+        params = params.get("results", params) if isinstance(params, dict) else params
+        pinfo = {p["id"]: p for p in params if isinstance(p, dict) and p.get("id")}
+        stations = get(f"{DES}/locations/?layer__code=STATIONS")
+        stations = stations.get("results", stations) if isinstance(stations, dict) else stations
+    except Exception as e:
+        errors.append(f"NHDES station list: {e}")
+        return []
+
+    out = []
+    for st in stations or []:
+        pr = st.get("properties") or {}
+        code = pr.get("code")
+        if not code or pr.get("enabled") is False:
+            continue
+        try:
+            coords = st["geometry"]["coordinates"]
+            lon, lat = (coords[0] if isinstance(coords[0], list) else coords)[:2]
+        except Exception:
+            continue
+        time.sleep(0.2)
+        try:
+            tslist = get(f"{DES}/timeseries/sparse/?" + urllib.parse.urlencode({"location__code": code}))
+            tslist = tslist.get("results", tslist) if isinstance(tslist, dict) else tslist
+        except Exception as e:
+            errors.append(f"NHDES {code} list: {e}")
+            continue
+
+        best = {}
+        for ts in tslist or []:
+            tcode = (ts.get("code") or "").upper()
+            if ".USGS." in tcode or ".NWS." in tcode or ".USACE." in tcode:
+                continue  # already on the map from the original agency
+            param = pinfo.get(ts.get("parameter")) or {"name": ts.get("name", ""), "code": tcode.split(".")[2] if tcode.count(".") >= 2 else ""}
+            kind = des_kind(param)
+            if kind and kind not in best:
+                best[kind] = (ts["id"], param)
+        if not best:
+            continue
+
+        s = {"id": f"NHDES-{code}", "source": "NHDES", "lat": lat, "lon": lon,
+             "name": pr.get("name") or code, "desCode": code}
+        if "level" in best:
+            ts_id, param = best["level"]
+            try:
+                pts = des_values(ts_id, now - timedelta(days=7), now)
+                if pts:
+                    s["height"] = round(pts[-1][1], 2)
+                    s["heightTime"] = pts[-1][0].isoformat()
+                    s["change"] = change_24h(pts)
+                    s["series"] = hourly(pts)
+                    pname = (param.get("name") or "").lower()
+                    s["levelLabel"] = "Lake level" if ("elev" in pname or "lake" in pname) else "Water level"
+                    history, years = [], 0
+                    for y in range(1, 11):
+                        try:
+                            mid = now.replace(year=now.year - y)
+                        except ValueError:
+                            mid = now.replace(year=now.year - y, day=28)
+                        try:
+                            past = des_values(ts_id, mid - timedelta(days=7), mid + timedelta(days=7))
+                        except Exception:
+                            past = []
+                        if past:
+                            years += 1
+                            history += [v for _, v in past]
+                        time.sleep(0.2)
+                    pct = pct_from_history(s["height"], history) if years >= 3 else None
+                    if pct is not None:
+                        s["normal"] = {"pct": round(pct), "cat": category(pct), "basis": "level",
+                                       "source": f"NHDES readings, {years} past years"}
+            except Exception as e:
+                errors.append(f"NHDES {code} level: {e}")
+        if "temp" in best:
+            ts_id, param = best["temp"]
+            try:
+                pts = des_values(ts_id, now - timedelta(days=2), now)
+                if pts:
+                    v = pts[-1][1]
+                    unit = ((param.get("unit") or {}).get("code") or "").upper()
+                    if unit in ("C", "DEGC", "DEG C", "CEL", "CELSIUS") or (not unit.startswith("F") and v < 40 and "F" not in unit):
+                        v = v * 9 / 5 + 32
+                    s["temp"] = round(v, 1)
+                    s["tempTime"] = pts[-1][0].isoformat()
+            except Exception as e:
+                errors.append(f"NHDES {code} temp: {e}")
+        if "flow" in best:
+            ts_id, param = best["flow"]
+            try:
+                pts = des_values(ts_id, now - timedelta(days=2), now)
+                if pts:
+                    s["flow"] = round(pts[-1][1])
+                    s["flowTime"] = pts[-1][0].isoformat()
+                    s["flowLabel"] = "Dam outflow" if (param.get("code") or "").upper() == "QOUT" else "Flow"
+            except Exception as e:
+                errors.append(f"NHDES {code} flow: {e}")
+        if any(k in s for k in ("height", "temp", "flow")):
+            out.append(s)
+    return out
+
+
 if __name__ == "__main__":
     sites = collect_usgs()
     print(f"USGS: {len(sites)} gauges")
     corps = collect_corps()
     print(f"Army Corps: {len(corps)} stations")
-    result = {"updated": now.isoformat(), "errors": errors[:50], "sites": sites + corps}
+    des = collect_nhdes()
+    print(f"NHDES: {len(des)} stations "
+          f"({sum(1 for x in des if 'temp' in x)} with water temp, {sum(1 for x in des if 'normal' in x)} compared to normal)")
+    result = {"updated": now.isoformat(), "errors": errors[:50], "sites": sites + corps + des}
     with open("data.json", "w") as fh:
         json.dump(result, fh, separators=(",", ":"))
     for e in errors[:20]:

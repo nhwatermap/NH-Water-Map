@@ -109,7 +109,7 @@ const markers = L.layerGroup();
 
 const map = L.map('map').setView([43.9, -71.55], 8);
 L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', {
-  maxZoom: 17, attribution: 'Map: Esri, HERE, Garmin, USGS, NGA, EPA, NPS | Water data: USGS, US Army Corps of Engineers'
+  maxZoom: 17, attribution: 'Map: Esri, HERE, Garmin, USGS, NGA, EPA, NPS | Water data: USGS, US Army Corps of Engineers, NH DES'
 }).addTo(map);
 markers.addTo(map);
 
@@ -169,9 +169,12 @@ function draw() {
     const col = colorFor(s);
     if (!col) continue;
     const stale = isStale(s, key);
-    const corps = s.source === 'Army Corps';
+    const corps = s.source === 'Army Corps', des = s.source === 'NHDES';
     const opts = { weight: stale ? 2 : (corps ? 2.5 : 1), color: stale ? col : (corps ? css('--ink') : 'rgba(0,0,0,.45)'), fillColor: col, fillOpacity: stale ? 0 : .9 };
-    const m = corps
+    const m = des
+      ? L.marker([s.lat, s.lon], { icon: L.divIcon({ className: '', iconSize: [16, 16], iconAnchor: [8, 8],
+          html: `<div style="width:14px;height:14px;border-radius:2px;background:${stale ? 'transparent' : col};border:2px solid ${stale ? col : css('--ink')}"></div>` }) })
+      : corps
       ? L.marker([s.lat, s.lon], { icon: L.divIcon({ className: '', iconSize: [18, 18], iconAnchor: [9, 9],
           html: `<div style="width:16px;height:16px;transform:rotate(45deg);background:${stale ? 'transparent' : col};border:2px solid ${stale ? col : css('--ink')}"></div>` }) })
       : L.circleMarker([s.lat, s.lon], { radius: 8, ...opts });
@@ -191,8 +194,8 @@ function drawLegend() {
   }[mode];
   const title = { normal: 'Compared to normal for this date', change: 'Water level change, last 24 hrs', temp: 'Water temperature', level: 'Water level' }[mode];
   const note = {
-    change: 'Circles are USGS gauges, diamonds are Army Corps stations. Hollow means no recent reading, often from ice.',
-    normal: 'Compares today with past years on the same date. USGS gauges use flow where they have it; Army Corps stations use the last 10 years of levels.',
+    change: 'Circles are USGS gauges, diamonds are Army Corps stations, squares are NH DES lake and dam stations. Hollow means no recent reading, often from ice.',
+    normal: 'Compares today with past years on the same date. USGS gauges use flow where they have it; Army Corps and NH DES stations use the last 10 years of levels.',
     temp: 'Only some stations measure water temperature.',
     level: 'Each station has its own zero point, so compare a spot to itself over time. Tap one for its 7-day chart.'
   }[mode];
@@ -224,7 +227,9 @@ function chartSVG(series) {
 function openDetail(s) {
   const link = s.source === 'Army Corps'
     ? `https://water.usace.army.mil/overview/nae/locations/${encodeURIComponent(s.corpsId)}`
+    : s.source === 'NHDES' ? 'https://nhdes.rtiamanzi.org/stations'
     : `https://waterdata.usgs.gov/monitoring-location/${encodeURIComponent(s.id)}/`;
+  const siteName = { 'Army Corps': 'Army Corps', NHDES: 'NH DES', USGS: 'USGS' }[s.source] || s.source;
   const levelLabel = s.levelLabel || 'Water level';
   document.getElementById('detailBody').innerHTML = `<span class="badge">${esc(s.source)}</span>
     <h2>${esc(s.name || s.id)}</h2>
@@ -238,7 +243,7 @@ function openDetail(s) {
     </div>
     <div class="chart-title">${esc(levelLabel)}, last 7 days</div>
     <div class="chart-wrap">${chartSVG(s.series)}</div>
-    <p><a href="${link}" target="_blank" rel="noopener">Open this station on the ${s.source === 'Army Corps' ? 'Army Corps' : 'USGS'} site</a></p>`;
+    <p><a href="${link}" target="_blank" rel="noopener">Open this station on the ${siteName} site</a></p>`;
   document.getElementById('detail').classList.add('show');
 }
 
@@ -254,8 +259,8 @@ fetch('data.json?v=' + Date.now())
   .then(d => {
     sites = (d.sites || []).filter(s => s.lat != null && s.lon != null);
     draw();
-    const usgs = sites.filter(s => s.source === 'USGS').length, corps = sites.length - usgs;
-    document.getElementById('status').textContent = `${usgs} USGS, ${corps} Army Corps · updated ${when(d.updated)}`;
+    const count = src => sites.filter(s => s.source === src).length;
+    document.getElementById('status').textContent = `${count('USGS')} USGS, ${count('Army Corps')} Army Corps, ${count('NHDES')} NH DES · updated ${when(d.updated)}`;
     if (!sites.length) showError('The last update found no stations. Check the Actions tab on GitHub for what went wrong.');
   })
   .catch(e => {
