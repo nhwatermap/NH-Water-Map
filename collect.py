@@ -105,6 +105,14 @@ def category(pct):
 
 def walk_stats(node, ctx, out):
     """Pull day-of-year statistics out of the USGS reply, whatever its exact layout."""
+    if isinstance(node, str):
+        t = node.strip()
+        if t[:1] in "[{":
+            try:
+                walk_stats(json.loads(t), ctx, out)
+            except ValueError:
+                pass
+        return
     if isinstance(node, list):
         for n in node:
             walk_stats(n, ctx, out)
@@ -126,7 +134,7 @@ def walk_stats(node, ctx, out):
         if pc is not None and comp not in ("arithmetic_mean", "mean"):
             out.append((ctx, pc, node["value"]))
     for v in node.values():
-        if isinstance(v, (dict, list)):
+        if isinstance(v, (dict, list, str)):
             walk_stats(v, ctx, out)
 
 
@@ -138,17 +146,17 @@ def usgs_normals(site_ids):
         batch = site_ids[i:i + 20]
         params = [("monitoring_location_id", sid) for sid in batch]
         params += [("parameter_code", "00060"), ("parameter_code", "00065"),
-                   ("start_date", today), ("end_date", today), ("f", "json")]
-        if USGS_KEY:
-            params.append(("api_key", USGS_KEY))
+                   ("start_date", today), ("end_date", today), ("normal_type", "DOY")]
         try:
             data = get("https://api.waterdata.usgs.gov/statistics/v0/observationNormals?" +
-                       urllib.parse.urlencode(params))
+                       urllib.parse.urlencode(params), {"X-Api-Key": USGS_KEY} if USGS_KEY else None)
         except Exception as e:
             errors.append(f"USGS normals: {e}")
             continue
         rows = []
         walk_stats(data, {}, rows)
+        if not rows and i == 0:
+            print("USGS normals sample reply:", json.dumps(data)[:600])
         for ctx, pc, v in rows:
             if ctx.get("time_of_year_type", "day_of_year") != "day_of_year":
                 continue
@@ -223,6 +231,8 @@ def collect_usgs():
             if pct is not None:
                 s["normal"] = {"pct": round(pct), "cat": category(pct), "basis": basis, "source": "USGS long-term records"}
                 break
+    print(f"USGS normals: found history for {len(tables)} gauge readings, "
+          f"{sum(1 for s in sites.values() if 'normal' in s)} gauges compared")
     return list(sites.values())
 
 
