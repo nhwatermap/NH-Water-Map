@@ -86,6 +86,27 @@ def pct_from_table(value, table):
     return None
 
 
+def median_from_table(table):
+    pts = sorted({(p, v) for p, v in table if v is not None})
+    for p, v in pts:
+        if p == 50:
+            return v
+    lo = [x for x in pts if x[0] < 50]
+    hi = [x for x in pts if x[0] > 50]
+    if lo and hi:
+        (p1, v1), (p2, v2) = lo[-1], hi[0]
+        return v1 + (v2 - v1) * (50 - p1) / (p2 - p1)
+    return None
+
+
+def median(values):
+    v = sorted(values)
+    if not v:
+        return None
+    n = len(v)
+    return v[n // 2] if n % 2 else (v[n // 2 - 1] + v[n // 2]) / 2
+
+
 def pct_from_history(value, history):
     if len(history) < 50:
         return None
@@ -254,7 +275,10 @@ def collect_usgs():
                 continue
             pct = pct_from_table(s[key], tables[(s["id"], code)])
             if pct is not None:
-                s["normal"] = {"pct": round(pct), "cat": category(pct), "basis": basis, "source": "USGS long-term records"}
+                typ = median_from_table(tables[(s["id"], code)])
+                s["normal"] = {"pct": round(pct), "cat": category(pct), "basis": basis, "source": "USGS long-term records",
+                               "typical": None if typ is None else round(typ, 2), "now": s[key],
+                               "unit": "cfs" if basis == "flow" else "ft"}
                 break
     print(f"USGS normals: found history for {len(tables)} gauge readings, "
           f"{sum(1 for s in sites.values() if 'normal' in s)} gauges compared")
@@ -371,7 +395,8 @@ def collect_corps():
                     pct = pct_from_history(s["height"], history) if years >= 3 else None
                     if pct is not None:
                         s["normal"] = {"pct": round(pct), "cat": category(pct), "basis": "level",
-                                       "source": f"Army Corps readings, {years} past years"}
+                                       "source": f"Army Corps readings, {years} past years",
+                                       "typical": round(median(history), 2), "now": s["height"], "unit": "ft"}
             except Exception as e:
                 errors.append(f"Army Corps {loc} level: {e}")
 
@@ -536,7 +561,8 @@ def collect_nhdes():
                     pct = pct_from_history(s["height"], history) if years >= 3 else None
                     if pct is not None:
                         s["normal"] = {"pct": round(pct), "cat": category(pct), "basis": "level",
-                                       "source": f"NHDES readings, {years} past years"}
+                                       "source": f"NHDES readings, {years} past years",
+                                       "typical": round(median(history), 2), "now": s["height"], "unit": "ft"}
             except Exception as e:
                 errors.append(f"NHDES {code} level: {e}")
         if "temp" in best:

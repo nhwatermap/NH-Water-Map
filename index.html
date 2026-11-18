@@ -160,9 +160,24 @@ function tipText(s) {
 
 const CAT_LABEL = { 'much-below': 'Much below normal', below: 'Below normal', normal: 'Normal', above: 'Above normal', 'much-above': 'Much above normal' };
 function ordinal(n) { const v = n % 100; return n + (['th', 'st', 'nd', 'rd'][(v - 20) % 10] || ['th', 'st', 'nd', 'rd'][v] || 'th'); }
+function diffText(n) {
+  if (n.typical == null || n.now == null) return CAT_LABEL[n.cat].replace('normal', 'typical');
+  if (n.unit === 'cfs') {
+    if (!n.typical) return CAT_LABEL[n.cat].replace('normal', 'typical');
+    const r = n.now / n.typical;
+    if (r >= 0.9 && r <= 1.1) return 'About typical';
+    if (r > 1) return r >= 1.95 ? (r).toFixed(1).replace(/\.0$/, '') + '× typical flow' : Math.round((r - 1) * 100) + '% above typical';
+    return Math.round((1 - r) * 100) + '% below typical';
+  }
+  const d = n.now - n.typical;
+  if (Math.abs(d) < 0.05) return 'About typical';
+  const amt = Math.abs(d) < 1 ? Math.round(Math.abs(d) * 12) + ' in' : Math.abs(d).toFixed(1) + ' ft';
+  return amt + (d > 0 ? ' above' : ' below') + ' typical';
+}
+function fmtVal(v, unit) { return unit === 'cfs' ? Math.round(v).toLocaleString() + ' cfs' : Number(v).toFixed(2) + ' ft'; }
 function normalText(s) {
   if (!s.normal) return 'No history to compare';
-  return CAT_LABEL[s.normal.cat] + ' for this date (' + ordinal(s.normal.pct) + ' percentile)';
+  return diffText(s.normal) + ' for this date';
 }
 
 function draw() {
@@ -193,14 +208,14 @@ function draw() {
 function drawLegend() {
   const rows = {
     change: [['--fall2', 'Falling fast (½ ft or more)'], ['--fall1', 'Falling'], ['--steady', 'Steady (within 0.1 ft)'], ['--rise1', 'Rising'], ['--rise2', 'Rising fast (½ ft or more)']],
-    normal: [['--n5', 'Much above normal (top 10%)'], ['--n4', 'Above normal'], ['--n3', 'Normal (middle half)'], ['--n2', 'Below normal'], ['--n1', 'Much below normal (bottom 10%)']],
+    normal: [['--n5', 'Much higher than typical'], ['--n4', 'Higher than typical'], ['--n3', 'About typical'], ['--n2', 'Lower than typical'], ['--n1', 'Much lower than typical']],
     temp: [['--t1', 'Below 40 °F'], ['--t2', '40–50 °F'], ['--t3', '50–60 °F'], ['--t4', '60–70 °F'], ['--t5', '70 °F and up']],
     level: [['--lvl', 'Reporting water level']]
   }[mode];
-  const title = { normal: 'Compared to normal for this date', change: 'Water level change, last 24 hrs', temp: 'Water temperature', level: 'Water level' }[mode];
+  const title = { normal: 'Compared to typical for this date', change: 'Water level change, last 24 hrs', temp: 'Water temperature', level: 'Water level' }[mode];
   const note = {
     change: 'Steady means it moved less than about an inch either way.',
-    normal: 'Compares today with past years on the same date. USGS gauges use flow where they have it; Army Corps and NH DES stations use the last 10 years of levels.',
+    normal: '“Much” higher or lower means among the highest or lowest tenth of past years on this date. Tap a station for typical vs. now.',
     temp: 'Only some stations measure water temperature.',
     level: 'Each station has its own zero point, so compare a spot to itself over time. Tap one for its 7-day chart.'
   }[mode];
@@ -250,7 +265,7 @@ function openDetail(s) {
       <div class="stat"><span>24-hr change</span><b>${s.change == null ? '—' : (s.change > 0 ? '+' : '') + fmt(s.change, 2) + ' ft'}</b></div>
       <div class="stat"><span>Water temp</span><b>${s.temp == null ? 'Not measured' : fmt(s.temp) + ' °F'}</b></div>
       <div class="stat"><span>${esc(s.flowLabel || 'Flow')}</span><b>${s.flow == null ? '—' : Math.round(s.flow).toLocaleString() + ' cfs'}</b></div>
-      <div class="stat wide"><span>Compared to normal for this date</span><b>${s.normal ? CAT_LABEL[s.normal.cat] : 'No history to compare'}</b>${s.normal ? `<small>Higher than ${s.normal.pct}% of past years on this date, based on ${s.normal.basis === 'flow' ? 'flow' : 'water level'} · ${esc(s.normal.source)}</small>` : ''}</div>
+      <div class="stat wide"><span>Compared to typical for ${new Date(collectedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span><b>${s.normal ? diffText(s.normal) : 'No history to compare'}</b>${s.normal && s.normal.typical != null ? `<small>Typical: ${fmtVal(s.normal.typical, s.normal.unit)} · Now: ${fmtVal(s.normal.now, s.normal.unit)}${s.normal.unit === 'cfs' ? ' (flow)' : ''}<br>${esc(s.normal.source)}</small>` : s.normal ? `<small>${esc(s.normal.source)}</small>` : ''}</div>
     </div>
     <div class="chart-title">${esc(levelLabel)}, last 7 days</div>
     <div class="chart-wrap">${chartSVG(s.series)}</div>
