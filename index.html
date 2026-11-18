@@ -14,7 +14,7 @@
   --fall2:#1d5ca6; --fall1:#72a6d8; --steady:#98a39d; --rise1:#e29a3f; --rise2:#bf3627;
   --t1:#2a5ea6; --t2:#4ea2c6; --t3:#5aa877; --t4:#dcae38; --t5:#cf512d;
   --lvl:#2e6e9e; --stale:#b9c2bc;
-  --n1:#b2182b; --n2:#ef8a3c; --n3:#3fa34d; --n4:#5bc0de; --n5:#1f3fa8;
+  --ramp:#6b4a2b; --cartop:#7b3f86; --n1:#b2182b; --n2:#ef8a3c; --n3:#3fa34d; --n4:#5bc0de; --n5:#1f3fa8;
   color-scheme:light;
   box-sizing:border-box;
   padding-top:env(safe-area-inset-top,0px);
@@ -62,8 +62,11 @@ main{position:relative;flex:1;min-height:0}
 .layer-row b{display:block;font-weight:600}
 .layer-row small{display:block;color:var(--muted);font-size:.8rem;line-height:1.3}
 .layer-note{color:var(--muted);font-size:.75rem;margin:.35rem 0 0;line-height:1.3}
-.acc-icon{width:22px;height:22px;border-radius:4px;background:#6b4a2b;border:1.5px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center}
+.acc-icon{width:22px;height:22px;border-radius:4px;background:var(--ramp);border:1.5px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center}
 .acc-icon svg{width:18px;height:18px}
+.acc-icon.cartop{background:var(--cartop)}
+.acc-dot{width:9px;height:9px;transform:rotate(45deg);background:var(--ramp);border:1.5px solid #fff;box-shadow:0 0 2px rgba(0,0,0,.5)}
+.acc-dot.cartop{background:var(--cartop)}
 .layer-row .acc-icon{flex:none;margin-top:.05rem}
 .detail dl{display:grid;grid-template-columns:auto 1fr;gap:.3rem .8rem;margin:0 0 1rem;font-size:.92rem}
 .detail dt{color:var(--muted)}
@@ -117,8 +120,8 @@ main{position:relative;flex:1;min-height:0}
     <button id="layersBtn" aria-expanded="false" aria-controls="layersBody"><span>Layers</span><span aria-hidden="true">▾</span></button>
     <div class="layers-body" id="layersBody">
       <label class="layer-row"><input type="checkbox" data-layer="ramp"><span class="acc-icon" data-icon="ramp"></span><span><b>Boat ramps</b><small>Launch sites for trailered boats, with a concrete, gravel or paved ramp.</small></span></label>
-      <label class="layer-row"><input type="checkbox" data-layer="cartop"><span class="acc-icon" data-icon="cartop"></span><span><b>Cartop access</b><small>Hand-carry launches for canoes, kayaks and small boats you can lift off a car. No trailer ramp.</small></span></label>
-      <p class="layer-note">Access sites from NH Fish and Game. Not every site is open year-round; check before you go.</p>
+      <label class="layer-row"><input type="checkbox" data-layer="cartop"><span class="acc-icon cartop" data-icon="cartop"></span><span><b>Cartop access</b><small>Hand-carry launches for canoes, kayaks and small boats you can lift off a car. No trailer ramp.</small></span></label>
+      <p class="layer-note">Zoomed out, sites show as small diamonds; zoom in for full icons. Access sites from NH Fish and Game. Not every site is open year-round; check before you go.</p>
     </div>
   </div>
   <aside class="detail" id="detail" aria-live="polite">
@@ -312,15 +315,23 @@ const ACCESS_SVG = {
   cartop: '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.5 13.5c4 3 17 3 21 0-4 1-17 1-21 0Z" fill="#fff"/><path d="M8 3.5 15.5 17"/><path d="M15 16.2l1.6 3.4 .9-.5-1.2-3.5Z" fill="#fff"/><path d="M3 20c1.5-.9 3-.9 4.5 0s3 .9 4.5 0"/></svg>'
 };
 document.querySelectorAll('[data-icon]').forEach(el => el.innerHTML = ACCESS_SVG[el.dataset.icon]);
+// Small markers sit under the water stations; full icons sit on top once zoomed in
+map.createPane('accessLow').style.zIndex = 350;
+map.createPane('accessHigh').style.zIndex = 650;
+const ICON_ZOOM = 10; // zoom level where full icons appear
 const accessLayers = { ramp: L.layerGroup(), cartop: L.layerGroup() };
+let accessBig = null;
 let accessSites = [];
 
 function buildAccess() {
+  accessBig = map.getZoom() >= ICON_ZOOM;
   for (const k in accessLayers) accessLayers[k].clearLayers();
   for (const a of accessSites) {
     if (!accessLayers[a.kind]) continue;
-    const icon = L.divIcon({ className: '', iconSize: [22, 22], iconAnchor: [11, 11], html: `<div class="acc-icon">${ACCESS_SVG[a.kind]}</div>` });
-    L.marker([a.lat, a.lon], { icon, zIndexOffset: 500 })
+    const icon = accessBig
+      ? L.divIcon({ className: '', iconSize: [22, 22], iconAnchor: [11, 11], html: `<div class="acc-icon ${a.kind}">${ACCESS_SVG[a.kind]}</div>` })
+      : L.divIcon({ className: '', iconSize: [12, 12], iconAnchor: [6, 6], html: `<div class="acc-dot ${a.kind}"></div>` });
+    L.marker([a.lat, a.lon], { icon, pane: accessBig ? 'accessHigh' : 'accessLow' })
       .bindTooltip(esc(a.name) + (a.water && a.water !== a.name ? '<br>' + esc(a.water) : ''))
       .on('click', () => openAccess(a))
       .addTo(accessLayers[a.kind]);
@@ -340,6 +351,8 @@ function openAccess(a) {
     <p class="layer-note">From NH Fish and Game’s public access list. Conditions and seasonal closures can change; check signs on site.</p>`;
   document.getElementById('detail').classList.add('show');
 }
+
+map.on('zoomend', () => { if ((map.getZoom() >= ICON_ZOOM) !== accessBig && accessSites.length) buildAccess(); });
 
 function setLayer(kind, on) {
   if (on) accessLayers[kind].addTo(map); else map.removeLayer(accessLayers[kind]);
