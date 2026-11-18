@@ -14,7 +14,7 @@
   --fall2:#1d5ca6; --fall1:#72a6d8; --steady:#98a39d; --rise1:#e29a3f; --rise2:#bf3627;
   --t1:#2a5ea6; --t2:#4ea2c6; --t3:#5aa877; --t4:#dcae38; --t5:#cf512d;
   --lvl:#2e6e9e; --stale:#b9c2bc;
-  --marsh:#e8822a; --swamp:#d9b77e; --ramp:#6b4a2b; --cartop:#7b3f86; --n1:#b2182b; --n2:#ef8a3c; --n3:#3fa34d; --n4:#5bc0de; --n5:#1f3fa8;
+  --marsh:#e8822a; --swamp:#d9b77e; --weedy1:#96c478; --weedy2:#2e7034; --ramp:#6b4a2b; --cartop:#7b3f86; --n1:#b2182b; --n2:#ef8a3c; --n3:#3fa34d; --n4:#5bc0de; --n5:#1f3fa8;
   color-scheme:light;
   box-sizing:border-box;
   padding-top:env(safe-area-inset-top,0px);
@@ -64,7 +64,8 @@ main{position:relative;flex:1;min-height:0}
 .layer-note{color:var(--muted);font-size:.75rem;margin:.35rem 0 0;line-height:1.3}
 .wet-swatch{width:22px;height:22px;border-radius:4px;overflow:hidden;display:flex;flex-direction:column;flex:none;margin-top:.05rem;border:1.5px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4)}
 .wet-swatch i{flex:1;background:var(--marsh)}
-.wet-swatch i + i{background:var(--swamp)}
+.wet-swatch i:nth-child(2){background:var(--swamp)}
+.wet-swatch i:nth-child(3), .key.weedy{background:repeating-linear-gradient(135deg, var(--weedy2) 0 1.5px, var(--weedy1) 1.5px 4px)}
 .key{display:inline-block;width:.7rem;height:.7rem;border-radius:2px;margin-right:.3rem;vertical-align:-1px}
 .key.marsh{background:var(--marsh)}
 .key.swamp{background:var(--swamp)}
@@ -129,7 +130,7 @@ main{position:relative;flex:1;min-height:0}
       <label class="layer-row"><input type="checkbox" data-layer="ramp"><span class="acc-icon" data-icon="ramp"></span><span><b>Boat ramps</b><small>Launch sites for trailered boats, with a concrete, gravel or paved ramp.</small></span></label>
       <label class="layer-row"><input type="checkbox" data-layer="cartop"><span class="acc-icon cartop" data-icon="cartop"></span><span><b>Cartop access</b><small>Hand-carry launches for canoes, kayaks and small boats you can lift off a car. No trailer ramp.</small></span></label>
       <p class="layer-note">Zoomed out, sites show as small diamonds; zoom in for full icons. Access sites from NH Fish and Game. Not every site is open year-round; check before you go.</p>
-      <label class="layer-row"><input type="checkbox" data-layer="wetlands"><span class="wet-swatch" aria-hidden="true"><i></i><i></i></span><span><b>Marshes &amp; wetlands</b><small><span class="key marsh"></span>Orange: marsh and salt marsh (cattail, grass, sedge).<br><span class="key swamp"></span>Tan: shrub and wooded swamp.</small><small id="wetZoomNote">Zoom in to about town level to see the shading.</small></span></label>
+      <label class="layer-row"><input type="checkbox" data-layer="wetlands"><span class="wet-swatch" aria-hidden="true"><i></i><i></i><i></i></span><span><b>Marshes &amp; wetlands</b><small><span class="key marsh"></span>Orange: marsh and salt marsh (cattail, grass, sedge).<br><span class="key swamp"></span>Tan: shrub and wooded swamp.<br><span class="key weedy"></span>Striped green: weedy ponds and shallows (lily pads, pondweed, floating plants).</small><small id="wetZoomNote">Zoom in to about town level to see the shading.</small></span></label>
       <p class="layer-note">Wetlands from the U.S. Fish and Wildlife Service National Wetlands Inventory. Mapped from aerial photos and may be years old; boundaries are approximate and many are on private land.</p>
     </div>
   </div>
@@ -370,15 +371,23 @@ const fill = (rgba, edge) => ({ type: 'esriSFS', style: 'esriSFSSolid', color: r
 const MARSH = fill([232, 130, 42, 165], [196, 98, 18, 220]);
 const SWAMP = fill([217, 183, 126, 120], [176, 140, 84, 160]);
 const WET_TYPES = ['Freshwater Emergent Wetland', 'Estuarine and Marine Wetland', 'Freshwater Forested/Shrub Wetland'];
-const NWI_DYNAMIC = JSON.stringify([{
-  id: 0, source: { type: 'mapLayer', mapLayerId: 0 },
-  definitionExpression: "Wetlands.WETLAND_TYPE IN ('" + WET_TYPES.join("','") + "')",
-  drawingInfo: { renderer: { type: 'uniqueValue', field1: 'Wetlands.WETLAND_TYPE', uniqueValueInfos: [
-    { value: WET_TYPES[0], label: 'Marsh', symbol: MARSH },
-    { value: WET_TYPES[1], label: 'Salt marsh', symbol: MARSH },
-    { value: WET_TYPES[2], label: 'Swamp', symbol: SWAMP }
-  ] } }
-}]);
+// Weedy ponds and shallows: aquatic bed in ponds (PAB) and in lake shallows (L2AB)
+const WEEDY_WHERE = "(Wetlands.ATTRIBUTE LIKE 'PAB%' OR Wetlands.ATTRIBUTE LIKE 'L2AB%')";
+const WEEDY_FILL = fill([150, 196, 120, 105], [96, 150, 70, 150]);
+const WEEDY_STRIPES = { type: 'esriSFS', style: 'esriSFSBackwardDiagonal', color: [46, 112, 52, 230], outline: { type: 'esriSLS', style: 'esriSLSNull', color: [0, 0, 0, 0], width: 0 } };
+const simple = symbol => ({ type: 'simple', symbol });
+// Listed top to bottom: stripes above the pale fill, both above marsh and swamp
+const NWI_DYNAMIC = JSON.stringify([
+  { id: 2, source: { type: 'mapLayer', mapLayerId: 0 }, definitionExpression: WEEDY_WHERE, drawingInfo: { renderer: simple(WEEDY_STRIPES) } },
+  { id: 1, source: { type: 'mapLayer', mapLayerId: 0 }, definitionExpression: WEEDY_WHERE, drawingInfo: { renderer: simple(WEEDY_FILL) } },
+  { id: 0, source: { type: 'mapLayer', mapLayerId: 0 },
+    definitionExpression: "Wetlands.WETLAND_TYPE IN ('" + WET_TYPES.join("','") + "')",
+    drawingInfo: { renderer: { type: 'uniqueValue', field1: 'Wetlands.WETLAND_TYPE', uniqueValueInfos: [
+      { value: WET_TYPES[0], label: 'Marsh', symbol: MARSH },
+      { value: WET_TYPES[1], label: 'Salt marsh', symbol: MARSH },
+      { value: WET_TYPES[2], label: 'Swamp', symbol: SWAMP }
+    ] } } }
+]);
 const WetlandLayer = L.TileLayer.extend({
   getTileUrl(c) {
     const W = 20037508.342789244, span = 2 * W / (Math.pow(2, c.z) * 256 / this.options.tileSize);
@@ -391,7 +400,7 @@ const WetlandLayer = L.TileLayer.extend({
 });
 const wetlands = new WetlandLayer('', { tileSize: 256, minZoom: WET_MIN_ZOOM, maxZoom: 18, opacity: 1,
   attribution: 'Wetlands: U.S. Fish &amp; Wildlife Service NWI' });
-map.attributionControl.addAttribution('Page v11');
+map.attributionControl.addAttribution('Page v12');
 // A slow or failed square is retried up to twice (after 2 s, then 5 s). We never switch to the
 // server's standard green colors; a square that still fails just stays blank.
 wetlands.on('tileerror', e => {
