@@ -52,6 +52,23 @@ main{position:relative;flex:1;min-height:0}
 .legend .dot{width:12px;height:12px;border-radius:50%;flex:none;border:1px solid rgba(0,0,0,.25)}
 .legend p{margin:.4rem 0 0;color:var(--muted);font-size:.82rem}
 .legend .shapes{border-top:1px solid var(--line);margin-top:.5rem;padding-top:.45rem}
+.layers{position:absolute;left:3.4rem;top:.75rem;z-index:550;background:var(--panel);border:1px solid var(--line);border-radius:8px;max-width:min(300px,calc(100% - 4.4rem));font-size:.9rem}
+.layers > button{font:inherit;font-weight:600;background:transparent;border:0;color:var(--ink);padding:.5rem .8rem;cursor:pointer;width:100%;text-align:left;display:flex;justify-content:space-between;gap:1rem}
+.layers > button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.layers-body{padding:0 .8rem .6rem;display:none}
+.layers.open .layers-body{display:block}
+.layer-row{display:flex;gap:.55rem;align-items:flex-start;padding:.45rem 0;border-top:1px solid var(--line);cursor:pointer}
+.layer-row input{margin-top:.25rem;accent-color:var(--accent);width:1rem;height:1rem;flex:none}
+.layer-row b{display:block;font-weight:600}
+.layer-row small{display:block;color:var(--muted);font-size:.8rem;line-height:1.3}
+.layer-note{color:var(--muted);font-size:.75rem;margin:.35rem 0 0;line-height:1.3}
+.acc-icon{width:22px;height:22px;border-radius:4px;background:#6b4a2b;border:1.5px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center}
+.acc-icon svg{width:18px;height:18px}
+.layer-row .acc-icon{flex:none;margin-top:.05rem}
+.detail dl{display:grid;grid-template-columns:auto 1fr;gap:.3rem .8rem;margin:0 0 1rem;font-size:.92rem}
+.detail dt{color:var(--muted)}
+.detail dd{margin:0}
+@media (max-width:640px){.layers{top:.5rem}}
 .legend .shape{width:12px;height:12px;flex:none;border:2px solid var(--ink)}
 .banner{position:absolute;top:.75rem;left:50%;transform:translateX(-50%);z-index:600;background:var(--panel);
   border:1px solid var(--rise2);border-left-width:4px;border-radius:6px;padding:.6rem .9rem;max-width:min(560px,calc(100% - 1.5rem));
@@ -96,6 +113,14 @@ main{position:relative;flex:1;min-height:0}
   <div id="map"></div>
   <div class="banner" id="banner" role="alert"></div>
   <div class="legend" id="legend"></div>
+  <div class="layers" id="layers">
+    <button id="layersBtn" aria-expanded="false" aria-controls="layersBody"><span>Layers</span><span aria-hidden="true">▾</span></button>
+    <div class="layers-body" id="layersBody">
+      <label class="layer-row"><input type="checkbox" data-layer="ramp"><span class="acc-icon" data-icon="ramp"></span><span><b>Boat ramps</b><small>Launch sites for trailered boats, with a concrete, gravel or paved ramp.</small></span></label>
+      <label class="layer-row"><input type="checkbox" data-layer="cartop"><span class="acc-icon" data-icon="cartop"></span><span><b>Cartop access</b><small>Hand-carry launches for canoes, kayaks and small boats you can lift off a car. No trailer ramp.</small></span></label>
+      <p class="layer-note">Access sites from NH Fish and Game. Not every site is open year-round; check before you go.</p>
+    </div>
+  </div>
   <aside class="detail" id="detail" aria-live="polite">
     <button class="close" id="close" aria-label="Close details">×</button>
     <div id="detailBody"></div>
@@ -112,7 +137,7 @@ const markers = L.layerGroup();
 
 const map = L.map('map').setView([43.9, -71.55], 8);
 L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', {
-  maxZoom: 17, attribution: 'Map: Esri, HERE, Garmin, USGS, NGA, EPA, NPS | Water data: USGS, US Army Corps of Engineers, NH DES'
+  maxZoom: 17, attribution: 'Map: Esri, HERE, Garmin, USGS, NGA, EPA, NPS | Water data: USGS, US Army Corps of Engineers, NH DES | Access sites: NH Fish and Game via NH GRANIT'
 }).addTo(map);
 markers.addTo(map);
 
@@ -191,15 +216,12 @@ function draw() {
     if (!col) continue;
     const stale = isStale(s, key);
     const fill = stale ? 'transparent' : col, edge = stale ? css('--muted') : css('--ink');
-    const corps = s.source === 'Army Corps', des = s.source === 'NHDES';
+    const lake = s.waterType === 'lake';
     const opts = { weight: stale ? 2 : 1, color: stale ? edge : 'rgba(0,0,0,.45)', fillColor: col, fillOpacity: stale ? 0 : .9 };
-    const m = des
-      ? L.marker([s.lat, s.lon], { icon: L.divIcon({ className: '', iconSize: [16, 16], iconAnchor: [8, 8],
-          html: `<div style="width:14px;height:14px;border-radius:2px;background:${fill};border:2px solid ${edge}"></div>` }) })
-      : corps
-      ? L.marker([s.lat, s.lon], { icon: L.divIcon({ className: '', iconSize: [18, 18], iconAnchor: [9, 9],
-          html: `<div style="width:14px;height:14px;transform:rotate(45deg);background:${fill};border:2px solid ${edge}"></div>` }) })
-      : L.circleMarker([s.lat, s.lon], { radius: 8, ...opts });
+    const m = lake
+      ? L.circleMarker([s.lat, s.lon], { radius: 8, ...opts })
+      : L.marker([s.lat, s.lon], { icon: L.divIcon({ className: '', iconSize: [16, 16], iconAnchor: [8, 8],
+          html: `<div style="width:14px;height:14px;border-radius:2px;background:${fill};border:${stale ? 2 : 1}px solid ${stale ? edge : 'rgba(0,0,0,.45)'}"></div>` }) });
     const last = s[key + 'Time'];
     m.bindTooltip(stale ? esc(s.name) + '<br>No recent reading' + (last ? ' (last: ' + when(last) + ')' : '') : tipText(s));
     m.on('click', () => openDetail(s));
@@ -225,10 +247,9 @@ function drawLegend() {
   document.getElementById('legend').innerHTML = `<strong>${title}</strong>` +
     rows.map(([v, l]) => `<div class="row"><span class="dot" style="background:${css(v)}"></span>${l}</div>`).join('') + `<p>${note}</p>` +
     `<div class="shapes">
-      <div class="row"><span class="shape" style="border-radius:50%"></span>USGS river gauge</div>
-      <div class="row"><span class="shape" style="transform:rotate(45deg) scale(.85)"></span>Army Corps river or dam</div>
-      <div class="row"><span class="shape" style="border-radius:2px"></span>NH DES lake or dam</div>
-      <div class="row"><span class="shape" style="border-radius:50%;border-color:var(--muted);border-style:solid;background:transparent"></span>Hollow gray: no recent reading (often ice or sensor out for winter)</div>
+      <div class="row"><span class="shape" style="border-radius:50%"></span>Lake, pond or reservoir</div>
+      <div class="row"><span class="shape" style="border-radius:2px"></span>River, stream or tidal water</div>
+      <div class="row"><span class="shape" style="border-radius:50%;border-color:var(--muted);background:transparent"></span>Hollow gray: no recent reading (often ice or sensor out for winter)</div>
     </div>`;
 }
 
@@ -284,12 +305,67 @@ document.querySelectorAll('.modes button').forEach(b => b.onclick = () => {
   draw();
 });
 
+
+// ---------- Boat access layers ----------
+const ACCESS_SVG = {
+  ramp: '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><g transform="rotate(24 12 11)"><path d="M3.5 7.5H18L15.5 11.5H6Z" fill="#fff"/><path d="M8 7.5 9.5 5H13" /><circle cx="7.5" cy="14" r="1.5" fill="#fff" stroke="none"/><path d="M1.5 16H23"/></g><path d="M13 21.5c1.4-.9 2.8-.9 4.2 0s2.8.9 4.2 0"/></svg>',
+  cartop: '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.5 13.5c4 3 17 3 21 0-4 1-17 1-21 0Z" fill="#fff"/><path d="M8 3.5 15.5 17"/><path d="M15 16.2l1.6 3.4 .9-.5-1.2-3.5Z" fill="#fff"/><path d="M3 20c1.5-.9 3-.9 4.5 0s3 .9 4.5 0"/></svg>'
+};
+document.querySelectorAll('[data-icon]').forEach(el => el.innerHTML = ACCESS_SVG[el.dataset.icon]);
+const accessLayers = { ramp: L.layerGroup(), cartop: L.layerGroup() };
+let accessSites = [];
+
+function buildAccess() {
+  for (const k in accessLayers) accessLayers[k].clearLayers();
+  for (const a of accessSites) {
+    if (!accessLayers[a.kind]) continue;
+    const icon = L.divIcon({ className: '', iconSize: [22, 22], iconAnchor: [11, 11], html: `<div class="acc-icon">${ACCESS_SVG[a.kind]}</div>` });
+    L.marker([a.lat, a.lon], { icon, zIndexOffset: 500 })
+      .bindTooltip(esc(a.name) + (a.water && a.water !== a.name ? '<br>' + esc(a.water) : ''))
+      .on('click', () => openAccess(a))
+      .addTo(accessLayers[a.kind]);
+  }
+}
+
+function openAccess(a) {
+  const row = (label, v) => v ? `<dt>${label}</dt><dd>${esc(v)}</dd>` : '';
+  document.getElementById('detailBody').innerHTML = `<span class="badge">${a.kind === 'ramp' ? 'Boat ramp' : 'Cartop access'}</span>
+    <h2>${esc(a.name)}</h2>
+    <p class="sub">${esc([a.water, a.town].filter(Boolean).join(' · '))}</p>
+    <dl>
+      ${row('Access type', a.type)}${row('Water body', a.waterType)}${row('Ramp', a.ramp)}${row('Parking', a.parking)}
+      ${row('Fee', a.fee)}${row('Dock', a.dock)}${row('Accessibility', a.accessible)}${row('Owner', a.owner)}${row('Notes', a.notes)}
+    </dl>
+    <p><a href="https://www.google.com/maps/dir/?api=1&destination=${a.lat},${a.lon}" target="_blank" rel="noopener">Get directions</a></p>
+    <p class="layer-note">From NH Fish and Game’s public access list. Conditions and seasonal closures can change; check signs on site.</p>`;
+  document.getElementById('detail').classList.add('show');
+}
+
+function setLayer(kind, on) {
+  if (on) accessLayers[kind].addTo(map); else map.removeLayer(accessLayers[kind]);
+  try { localStorage.setItem('layer-' + kind, on ? '1' : '0'); } catch (e) { }
+}
+document.querySelectorAll('[data-layer]').forEach(cb => {
+  let saved = null;
+  try { saved = localStorage.getItem('layer-' + cb.dataset.layer); } catch (e) { }
+  cb.checked = saved === '1';
+  cb.addEventListener('change', () => setLayer(cb.dataset.layer, cb.checked));
+});
+document.getElementById('layersBtn').addEventListener('click', () => {
+  const box = document.getElementById('layers'), open = !box.classList.contains('open');
+  box.classList.toggle('open', open);
+  document.getElementById('layersBtn').setAttribute('aria-expanded', open);
+});
+
 fetch('data.json?v=' + Date.now())
   .then(r => { if (!r.ok) throw new Error('data.json not found yet'); return r.json(); })
   .then(d => {
     if (d.updated) collectedAt = +new Date(d.updated);
     document.getElementById('normalBtn').textContent = 'vs. ' + monthShort() + ' avg';
     sites = (d.sites || []).filter(s => s.lat != null && s.lon != null);
+    accessSites = (d.access && d.access.sites) || [];
+    buildAccess();
+    document.querySelectorAll('[data-layer]').forEach(cb => { if (cb.checked) setLayer(cb.dataset.layer, true); });
     draw();
     const count = src => sites.filter(s => s.source === src).length;
     document.getElementById('status').textContent = `${count('USGS')} USGS, ${count('Army Corps')} Army Corps, ${count('NHDES')} NH DES · updated ${when(d.updated)}`;

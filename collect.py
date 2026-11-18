@@ -195,12 +195,24 @@ LOCAL = now.astimezone(timezone(timedelta(hours=-5)))
 MONTH = LOCAL.month
 MONTH_KEY = f"{LOCAL.year}-{MONTH:02d}"
 
-PREV = {}
+PREV, PREV_ACCESS = {}, None
 try:
     with open("data.json") as fh:
-        PREV = {o["id"]: o for o in json.load(fh).get("sites", []) if isinstance(o, dict) and o.get("id")}
+        _old = json.load(fh)
+        PREV = {o["id"]: o for o in _old.get("sites", []) if isinstance(o, dict) and o.get("id")}
+        PREV_ACCESS = _old.get("access")
 except Exception:
     pass
+
+
+def water_type_from_name(name, default="river"):
+    """Lake (circle on the map) or river (square), judged from a station's name."""
+    n = f" {(name or '').upper()} "
+    if any(w in n for w in (" LAKE", " POND", "RESERVOIR", " DAM ", " DAM,", " DAM(", " BAY ")):
+        return "lake"
+    if any(w in n for w in ("RIVER", "BROOK", "STREAM", "CREEK", " R ", " BR ")):
+        return "river"
+    return default
 
 
 def month_window(years_back):
@@ -286,13 +298,25 @@ def collect_usgs():
     with_history = 0
     for s in sites.values():
         s["name"] = old_names.get(s["id"])
-        if not s["name"]:
+        s["waterType"] = (PREV.get(s["id"]) or {}).get("waterType")
+        if not s["name"] or not s["waterType"]:
             time.sleep(0.3)
             try:
                 loc = usgs(f"monitoring-locations/items/{urllib.parse.quote(s['id'])}", {})
-                s["name"] = (loc.get("properties") or {}).get("monitoring_location_name") or s["id"]
+                props = loc.get("properties") or {}
+                s["name"] = props.get("monitoring_location_name") or s["name"] or s["id"]
+                code = str(props.get("site_type_code") or "").upper()
+                if code.startswith("LK"):
+                    s["waterType"] = "lake"
+                elif code.startswith("ES") or code.startswith("OC"):
+                    s["waterType"] = "tidal"
+                elif code.startswith("ST"):
+                    s["waterType"] = "river"
+                else:
+                    s["waterType"] = water_type_from_name(s["name"])
             except Exception:
-                s["name"] = s["id"]
+                s["name"] = s["name"] or s["id"]
+                s["waterType"] = water_type_from_name(s["name"])
         if "height" not in s:
             continue
         time.sleep(0.3)
@@ -459,6 +483,7 @@ def collect_corps():
              "corpsId": loc.lower()}
 
         level = pick(tsnames, ["Stage", "Elev"])
+        s["waterType"] = "lake" if (level and level.split(".")[1] == "Elev") else water_type_from_name(s["name"])
         if level:
             try:
                 pts = corps_series(level)
@@ -620,6 +645,7 @@ def collect_nhdes():
                     s["series"] = hourly(pts)
                     pname = (param.get("name") or "").lower()
                     s["levelLabel"] = "Lake level" if ("elev" in pname or "lake" in pname) else "Water level"
+                    s["waterType"] = "lake" if s["levelLabel"] == "Lake level" else water_type_from_name(s["name"])
                     b = cached_baseline(s["id"])
                     if b is None:
                         b = yearly_baseline(lambda st, en: des_values(ts_id, st, en))
@@ -649,11 +675,69 @@ def collect_nhdes():
                     s["flowLabel"] = "Dam outflow" if (param.get("code") or "").upper() == "QOUT" else "Flow"
             except Exception as e:
                 errors.append(f"NHDES {code} flow: {e}")
+        s.setdefault("waterType", water_type_from_name(s["name"], "lake"))
         if any(k in s for k in ("height", "temp", "flow")):
             out.append(s)
     print(f"NHDES: {own_ts} stations have state readings, {skipped_agency} readings skipped as USGS/NWS/Army Corps copies, "
           f"{no_coords} stations without a map location")
     return out
+
+
+# ---------------- Boat ramps and cartop access (NH Fish and Game, via GRANIT) ----------------
+ACCESS_URL = "https://granit24a.sr.unh.edu/nhgeodata/rest/services/CSD/RecreationResources/MapServer/0/query"
+ACCESS_FIELDS = "FACILITY,WATER_BODY,TOWN,OWNERSHIP,ACCESS_TYP,WB_TYPE,FEE,PARKING_TY,RAMP,DOCK,ADDITIONAL,HCAP_ACC,LATITUDE,LONGITUDE"
+
+
+def access_kind(access_type, ramp):
+    t, r = (access_type or "").lower(), (ramp or "").lower()
+    if "potential" in t:
+        return None  # not developed or signed
+    if any(w in t for w in ("cartop", "car top", "car-top", "carry", "canoe", "kayak", "paddl")):
+        return "cartop"
+    if any(w in t for w in ("trailer", "ramp", "boat launch", "boat access")):
+        return "ramp"
+    if "car" in r:
+        return "cartop"
+    if r and r not in ("none", "no", "n", "na", "n/a", "0"):
+        return "ramp"
+    return None
+
+
+def collect_access():
+    if isinstance(PREV_ACCESS, dict) and PREV_ACCESS.get("month") == MONTH_KEY and PREV_ACCESS.get("sites"):
+        print(f"Boat access: reused {len(PREV_ACCESS['sites'])} sites from earlier this month")
+        return PREV_ACCESS
+    out, types, offset = [], {}, 0
+    for _ in range(20):
+        params = {"where": "1=1", "outFields": ACCESS_FIELDS, "returnGeometry": "true", "outSR": "4326",
+                  "f": "json", "resultOffset": offset, "resultRecordCount": 1000, "orderByFields": "OBJECTID"}
+        data = get(ACCESS_URL + "?" + urllib.parse.urlencode(params))
+        feats = data.get("features") or []
+        for f in feats:
+            a, g = f.get("attributes") or {}, f.get("geometry") or {}
+            lat, lon = g.get("y") or a.get("LATITUDE"), g.get("x") or a.get("LONGITUDE")
+            if lat is None or lon is None:
+                continue
+            types[a.get("ACCESS_TYP") or "(blank)"] = types.get(a.get("ACCESS_TYP") or "(blank)", 0) + 1
+            kind = access_kind(a.get("ACCESS_TYP"), a.get("RAMP"))
+            if not kind:
+                continue
+            clean = lambda k: (str(a.get(k)).strip() if a.get(k) not in (None, "", " ") else None)
+            out.append({"kind": kind, "lat": round(float(lat), 5), "lon": round(float(lon), 5),
+                        "name": clean("FACILITY") or clean("WATER_BODY") or "Public access",
+                        "water": clean("WATER_BODY"), "town": clean("TOWN"), "type": clean("ACCESS_TYP"),
+                        "waterType": clean("WB_TYPE"), "ramp": clean("RAMP"), "parking": clean("PARKING_TY"),
+                        "fee": clean("FEE"), "dock": clean("DOCK"), "accessible": clean("HCAP_ACC"),
+                        "owner": clean("OWNERSHIP"), "notes": clean("ADDITIONAL")})
+        if len(feats) < 1000 and not data.get("exceededTransferLimit"):
+            break
+        offset += len(feats)
+        if not feats:
+            break
+    print("Boat access types in the state data:", ", ".join(f"{k} ({v})" for k, v in sorted(types.items(), key=lambda x: -x[1])[:15]))
+    print(f"Boat access: {sum(1 for x in out if x['kind'] == 'ramp')} boat ramps, "
+          f"{sum(1 for x in out if x['kind'] == 'cartop')} cartop sites")
+    return {"month": MONTH_KEY, "sites": out}
 
 
 if __name__ == "__main__":
@@ -679,7 +763,10 @@ if __name__ == "__main__":
     if not all_sites:
         print("Nothing collected this time; keeping the previous data.json.")
     else:
-        result = {"updated": now.isoformat(), "errors": errors[:50], "sites": all_sites}
+        acc = safe("Boat access", collect_access)
+        if not isinstance(acc, dict):
+            acc = PREV_ACCESS  # keep last month's list if the state server is down
+        result = {"updated": now.isoformat(), "errors": errors[:50], "sites": all_sites, "access": acc}
         with open("data.json", "w") as fh:
             json.dump(result, fh, separators=(",", ":"))
     for e in errors[:20]:
