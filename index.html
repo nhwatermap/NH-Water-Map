@@ -14,7 +14,7 @@
   --fall2:#1d5ca6; --fall1:#72a6d8; --steady:#98a39d; --rise1:#e29a3f; --rise2:#bf3627;
   --t1:#2a5ea6; --t2:#4ea2c6; --t3:#5aa877; --t4:#dcae38; --t5:#cf512d;
   --lvl:#2e6e9e; --stale:#b9c2bc;
-  --marsh:#e8822a; --swamp:#d9b77e; --weedy1:#96c478; --weedy2:#2e7034; --ramp:#6b4a2b; --cartop:#7b3f86; --n1:#b2182b; --n2:#ef8a3c; --n3:#3fa34d; --n4:#5bc0de; --n5:#1f3fa8;
+  --marsh:#e8822a; --swamp:#d9b77e; --weedy1:#96c478; --weedy2:#2e7034; --tide:#1f5f8b; --ramp:#6b4a2b; --cartop:#7b3f86; --n1:#b2182b; --n2:#ef8a3c; --n3:#3fa34d; --n4:#5bc0de; --n5:#1f3fa8;
   color-scheme:light;
   box-sizing:border-box;
   padding-top:env(safe-area-inset-top,0px);
@@ -73,6 +73,11 @@ main{position:relative;flex:1;min-height:0}
 .acc-icon{width:22px;height:22px;border-radius:4px;background:var(--ramp);border:1.5px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center}
 .acc-icon svg{width:18px;height:18px}
 .acc-icon.cartop{background:var(--cartop)}
+.acc-icon.tide{background:var(--tide);border-radius:50%}
+.tide-days{width:100%;border-collapse:collapse;font-size:.88rem;margin:.3rem 0 1rem}
+.tide-days th,.tide-days td{text-align:left;padding:.25rem .3rem;border-top:1px solid var(--line);vertical-align:top}
+.tide-days th{font-weight:600;white-space:nowrap}
+.tide-days .lo{color:var(--muted)}
 .acc-dot{width:9px;height:9px;transform:rotate(45deg);background:var(--ramp);border:1.5px solid #fff;box-shadow:0 0 2px rgba(0,0,0,.5)}
 .acc-dot.cartop{background:var(--cartop)}
 .layer-row .acc-icon{flex:none;margin-top:.05rem}
@@ -127,6 +132,7 @@ main{position:relative;flex:1;min-height:0}
   <div class="layers" id="layers">
     <button id="layersBtn" aria-expanded="false" aria-controls="layersBody"><span>Layers</span><span aria-hidden="true">▾</span></button>
     <div class="layers-body" id="layersBody">
+      <label class="layer-row"><input type="checkbox" data-layer="tides" data-default="on"><span class="acc-icon tide" data-icon="tide"></span><span><b>Tides</b><small>Seacoast tide times and heights for the next 7 days. Live NOAA stations also show the current water level, water temp and wind.</small></span></label>
       <label class="layer-row"><input type="checkbox" data-layer="ramp"><span class="acc-icon" data-icon="ramp"></span><span><b>Boat ramps</b><small>Launch sites for trailered boats, with a concrete, gravel or paved ramp.</small></span></label>
       <label class="layer-row"><input type="checkbox" data-layer="cartop"><span class="acc-icon cartop" data-icon="cartop"></span><span><b>Cartop access</b><small>Hand-carry launches for canoes, kayaks and small boats you can lift off a car. No trailer ramp.</small></span></label>
       <p class="layer-note">Zoomed out, sites show as small diamonds; zoom in for full icons. Access sites from NH Fish and Game. Not every site is open year-round; check before you go.</p>
@@ -322,6 +328,7 @@ document.querySelectorAll('.modes button').forEach(b => b.onclick = () => {
 // ---------- Boat access layers ----------
 const ACCESS_SVG = {
   ramp: '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><g transform="rotate(24 12 11)"><path d="M3.5 7.5H18L15.5 11.5H6Z" fill="#fff"/><path d="M8 7.5 9.5 5H13" /><circle cx="7.5" cy="14" r="1.5" fill="#fff" stroke="none"/><path d="M1.5 16H23"/></g><path d="M13 21.5c1.4-.9 2.8-.9 4.2 0s2.8.9 4.2 0"/></svg>',
+  tide: '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 9c2-1.6 4-1.6 6 0s4 1.6 6 0 4-1.6 6 0"/><path d="M3 14c2-1.6 4-1.6 6 0s4 1.6 6 0 4-1.6 6 0"/><path d="M3 19c2-1.6 4-1.6 6 0s4 1.6 6 0 4-1.6 6 0"/></svg>',
   cartop: '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.5 13.5c4 3 17 3 21 0-4 1-17 1-21 0Z" fill="#fff"/><path d="M8 3.5 15.5 17"/><path d="M15 16.2l1.6 3.4 .9-.5-1.2-3.5Z" fill="#fff"/><path d="M3 20c1.5-.9 3-.9 4.5 0s3 .9 4.5 0"/></svg>'
 };
 document.querySelectorAll('[data-icon]').forEach(el => el.innerHTML = ACCESS_SVG[el.dataset.icon]);
@@ -400,7 +407,7 @@ const WetlandLayer = L.TileLayer.extend({
 });
 const wetlands = new WetlandLayer('', { tileSize: 256, minZoom: WET_MIN_ZOOM, maxZoom: 18, opacity: 1,
   attribution: 'Wetlands: U.S. Fish &amp; Wildlife Service NWI' });
-map.attributionControl.addAttribution('Page v12');
+map.attributionControl.addAttribution('Page v13 | Tides: NOAA');
 // A slow or failed square is retried up to twice (after 2 s, then 5 s). We never switch to the
 // server's standard green colors; a square that still fails just stays blank.
 wetlands.on('tileerror', e => {
@@ -410,6 +417,110 @@ wetlands.on('tileerror', e => {
   setTimeout(() => { img.src = wetlands.getTileUrl(e.coords) + '&try=' + (n + 1); }, n ? 5000 : 2000);
 });
 const overlayLayers = { wetlands };
+
+// ---------- Tides (NOAA) ----------
+const tideLayer = L.layerGroup();
+overlayLayers.tides = tideLayer;
+let tideStations = [];
+const hhmm = t => new Date(t).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+const ftIn = v => (v < 0 ? '−' : '') + Math.abs(v).toFixed(1) + ' ft';
+const COMPASS = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+
+// Predicted height at time t, using the standard cosine shape between a high and a low
+function tideAt(hilo, t) {
+  for (let i = 0; i < hilo.length - 1; i++) {
+    const a = +new Date(hilo[i][0]), b = +new Date(hilo[i + 1][0]);
+    if (t >= a && t <= b) {
+      const f = (1 - Math.cos(Math.PI * (t - a) / (b - a))) / 2;
+      return hilo[i][1] + (hilo[i + 1][1] - hilo[i][1]) * f;
+    }
+  }
+  return null;
+}
+function tideNow(st) {
+  const t = Date.now(), h = st.hilo || [];
+  const next = h.find(e => +new Date(e[0]) > t);
+  const prevIdx = h.findIndex(e => +new Date(e[0]) > t) - 1;
+  if (!next || prevIdx < 0) return null;
+  return { height: tideAt(h, t), next, rising: next[2] === 'H', nextLow: h.find(e => +new Date(e[0]) > t && e[2] === 'L'), nextHigh: h.find(e => +new Date(e[0]) > t && e[2] === 'H') };
+}
+
+function tideCurve(st) {
+  const h = st.hilo || [];
+  if (h.length < 3) return '';
+  const t0 = Date.now() - 6 * 3600e3, t1 = Date.now() + 48 * 3600e3;
+  const pts = [];
+  for (let t = t0; t <= t1; t += 20 * 60e3) { const v = tideAt(h, t); if (v != null) pts.push([t, v]); }
+  if (pts.length < 2) return '';
+  const W = 320, H = 140, P = 30;
+  const ys = h.map(e => e[1]);
+  const y0 = Math.min(...ys, 0), y1 = Math.max(...ys);
+  const X = t => P + (t - t0) / (t1 - t0) * (W - P - 6), Y = v => 8 + (1 - (v - y0) / (y1 - y0 || 1)) * (H - 30);
+  const ink = css('--muted'), acc = css('--tide');
+  let days = '';
+  for (let d = new Date(t0); d <= t1; d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)) {
+    const mid = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12).getTime();
+    if (mid > t0 && mid < t1) days += `<text x="${X(mid)}" y="${H - 6}" font-size="10" fill="${ink}" text-anchor="middle">${new Date(mid).toLocaleDateString(undefined, { weekday: 'short' })}</text>`;
+  }
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Predicted tide, next 48 hours">
+    <line x1="${P}" y1="8" x2="${P}" y2="${H - 22}" stroke="${ink}" stroke-width=".5"/>
+    <text x="${P - 4}" y="14" font-size="10" fill="${ink}" text-anchor="end">${y1.toFixed(0)}</text>
+    <text x="${P - 4}" y="${H - 22}" font-size="10" fill="${ink}" text-anchor="end">${y0.toFixed(0)}</text>
+    <polyline points="${pts.map(p => X(p[0]).toFixed(1) + ',' + Y(p[1]).toFixed(1)).join(' ')}" fill="none" stroke="${acc}" stroke-width="2"/>
+    <line x1="${X(Date.now())}" y1="8" x2="${X(Date.now())}" y2="${H - 22}" stroke="${css('--ink')}" stroke-dasharray="3 3" stroke-width="1"/>
+    <text x="${X(Date.now()) + 3}" y="16" font-size="10" fill="${css('--ink')}">now</text>${days}</svg>`;
+}
+
+function tideTable(st) {
+  const byDay = {};
+  for (const [t, v, type] of st.hilo || []) {
+    if (+new Date(t) < Date.now() - 3600e3) continue;
+    const day = new Date(t).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+    (byDay[day] = byDay[day] || []).push(`<span class="${type === 'L' ? 'lo' : ''}">${type === 'H' ? 'High' : 'Low'} ${hhmm(t)} · ${ftIn(v)}</span>`);
+  }
+  const rows = Object.entries(byDay).slice(0, 7).map(([d, ev]) => `<tr><th>${d}</th><td>${ev.join('<br>')}</td></tr>`).join('');
+  return rows ? `<table class="tide-days">${rows}</table>` : '';
+}
+
+function openTide(st) {
+  const n = tideNow(st);
+  const stat = (label, val, sub) => `<div class="stat"><span>${label}</span><b>${val}</b>${sub ? `<small>${sub}</small>` : ''}</div>`;
+  let stats = '';
+  if (n) {
+    stats += stat('Tide now', n.rising ? 'Rising ↑' : 'Falling ↓', 'about ' + ftIn(n.height) + ' predicted');
+    stats += stat('Next ' + (n.next[2] === 'H' ? 'high' : 'low'), hhmm(n.next[0]), ftIn(n.next[1]));
+  }
+  if (st.level != null) {
+    const d = st.vsPredicted;
+    stats += stat('Measured now', ftIn(st.level), 'at ' + hhmm(st.levelTime));
+    if (d != null) stats += stat('vs. predicted', Math.abs(d) < 0.1 ? 'On forecast' : (d > 0 ? '+' : '−') + feetText(d), Math.abs(d) < 0.1 ? 'within an inch or so' : d > 0 ? 'higher than the tide table' : 'lower than the tide table');
+  }
+  if (st.temp != null) stats += stat('Water temp', fmt(st.temp) + ' °F', 'at ' + hhmm(st.tempTime));
+  if (st.wind) {
+    const w = st.wind, mph = k => Math.round(k * 1.15078);
+    stats += stat('Wind', (w.dir || COMPASS[Math.round(w.deg / 22.5) % 16]) + ' ' + mph(w.speed) + ' mph', w.gust ? 'gusts ' + mph(w.gust) + ' mph' : '');
+  }
+  if (st.airTemp != null) stats += stat('Air temp', fmt(st.airTemp) + ' °F', '');
+  document.getElementById('detailBody').innerHTML = `<span class="badge">NOAA ${st.live ? 'live station' : 'tide forecast'}</span>
+    <h2>${esc(st.name)}</h2>
+    <p class="sub">Heights in feet above mean lower low water (the zero on nautical charts)</p>
+    <div class="stats">${stats}</div>
+    ${st.hilo && st.hilo.length ? `<div class="chart-title">Predicted tide, next 48 hours</div><div class="chart-wrap">${tideCurve(st)}</div>
+    <div class="chart-title">High and low tides, next 7 days</div>${tideTable(st)}` : ''}
+    <p><a href="https://tidesandcurrents.noaa.gov/stationhome.html?id=${encodeURIComponent(st.id)}" target="_blank" rel="noopener">Open this station on the NOAA site</a></p>`;
+  document.getElementById('detail').classList.add('show');
+}
+
+function buildTides() {
+  tideLayer.clearLayers();
+  for (const st of tideStations) {
+    const icon = L.divIcon({ className: '', iconSize: [22, 22], iconAnchor: [11, 11], html: `<div class="acc-icon tide">${ACCESS_SVG.tide}</div>` });
+    const n = tideNow(st);
+    const tip = esc(st.name) + (n ? `<br>${n.rising ? 'Rising' : 'Falling'} · next ${n.next[2] === 'H' ? 'high' : 'low'} ${hhmm(n.next[0])}` : '') + (st.temp != null ? `<br>Water ${fmt(st.temp)} °F` : '');
+    L.marker([st.lat, st.lon], { icon, pane: 'accessHigh' }).bindTooltip(tip).on('click', () => openTide(st)).addTo(tideLayer);
+  }
+}
+
 function updateWetNote() {
   document.getElementById('wetZoomNote').style.display = map.getZoom() < WET_MIN_ZOOM ? '' : 'none';
 }
@@ -427,7 +538,7 @@ function setLayer(kind, on) {
 document.querySelectorAll('[data-layer]').forEach(cb => {
   let saved = null;
   try { saved = localStorage.getItem('layer-' + cb.dataset.layer); } catch (e) { }
-  cb.checked = saved === '1';
+  cb.checked = saved === null ? cb.dataset.default === 'on' : saved === '1';
   cb.addEventListener('change', () => setLayer(cb.dataset.layer, cb.checked));
 });
 document.getElementById('layersBtn').addEventListener('click', () => {
@@ -443,6 +554,8 @@ fetch('data.json?v=' + Date.now())
     document.getElementById('normalBtn').textContent = 'vs. ' + monthShort() + ' avg';
     sites = (d.sites || []).filter(s => s.lat != null && s.lon != null);
     accessSites = (d.access && d.access.sites) || [];
+    tideStations = (d.tides && d.tides.stations) || [];
+    buildTides();
     buildAccess();
     document.querySelectorAll('[data-layer]').forEach(cb => { if (cb.checked) setLayer(cb.dataset.layer, true); });
     draw();

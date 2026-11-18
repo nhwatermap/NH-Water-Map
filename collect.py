@@ -740,6 +740,112 @@ def collect_access():
     return {"month": MONTH_KEY, "sites": out}
 
 
+# ---------------- Seacoast tides (NOAA CO-OPS) ----------------
+NOAA = "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter"
+NOAA_MD = "https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations.json"
+COAST_BOX = (42.84, -71.05, 43.30, -70.50)  # Hampton/Seabrook to Dover and Salmon Falls, out to the Isles of Shoals
+
+
+def in_coast(lat, lon):
+    return COAST_BOX[0] <= lat <= COAST_BOX[2] and COAST_BOX[1] <= lon <= COAST_BOX[3]
+
+
+def noaa(params):
+    q = {"application": "nh_water_map", "format": "json", "time_zone": "gmt", "units": "english", **params}
+    data = get(NOAA + "?" + urllib.parse.urlencode(q))
+    if isinstance(data, dict) and data.get("error"):
+        raise ValueError(data["error"].get("message", "NOAA error"))
+    return data
+
+
+def noaa_stations(kind):
+    data = get(NOAA_MD + "?" + urllib.parse.urlencode({"type": kind}))
+    out = {}
+    for st in data.get("stations", []):
+        try:
+            lat, lon = float(st["lat"]), float(st["lng"])
+        except Exception:
+            continue
+        if in_coast(lat, lon):
+            out[str(st["id"])] = {"id": str(st["id"]), "name": st.get("name", str(st["id"])), "lat": lat, "lon": lon,
+                                  "state": st.get("state")}
+    return out
+
+
+def noaa_time(t):
+    return datetime.strptime(t, "%Y-%m-%d %H:%M").replace(tzinfo=timezone.utc)
+
+
+def collect_tides():
+    pred_st = noaa_stations("tidepredictions")
+    try:
+        live_st = noaa_stations("waterlevels")
+    except Exception as e:
+        errors.append(f"NOAA live station list: {e}")
+        live_st = {}
+    print(f"Tides: {len(pred_st)} prediction points and {len(live_st)} live NOAA stations on the seacoast")
+    begin = (now - timedelta(hours=12)).strftime("%Y%m%d %H:%M")
+    stations, temps = [], []
+    for sid, st in pred_st.items():
+        time.sleep(0.2)
+        try:
+            data = noaa({"product": "predictions", "station": sid, "begin_date": begin, "range": 7 * 24 + 12,
+                         "datum": "MLLW", "interval": "hilo"})
+            hilo = [[noaa_time(p["t"]).isoformat(), round(float(p["v"]), 2), p.get("type", "")]
+                    for p in data.get("predictions", [])]
+        except Exception as e:
+            errors.append(f"NOAA tides {sid}: {e}")
+            continue
+        if hilo:
+            stations.append({**st, "hilo": hilo})
+
+    # Live stations: water level vs. predicted, water temperature, wind
+    by_id = {s["id"]: s for s in stations}
+    for sid, st in live_st.items():
+        s = by_id.get(sid)
+        if s is None:
+            s = {**st, "hilo": []}
+            stations.append(s)
+            by_id[sid] = s
+        s["live"] = True
+        try:
+            wl = noaa({"product": "water_level", "station": sid, "date": "latest", "datum": "MLLW"}).get("data", [])
+            if wl:
+                t_obs, v_obs = noaa_time(wl[-1]["t"]), float(wl[-1]["v"])
+                pr = noaa({"product": "predictions", "station": sid, "datum": "MLLW", "interval": "6",
+                           "begin_date": (t_obs - timedelta(minutes=30)).strftime("%Y%m%d %H:%M"), "range": 1}).get("predictions", [])
+                s["level"] = round(v_obs, 2)
+                s["levelTime"] = t_obs.isoformat()
+                if pr:
+                    best = min(pr, key=lambda p: abs((noaa_time(p["t"]) - t_obs).total_seconds()))
+                    s["vsPredicted"] = round(v_obs - float(best["v"]), 2)
+        except Exception as e:
+            errors.append(f"NOAA water level {sid}: {e}")
+        for product, key in (("water_temperature", "temp"), ("air_temperature", "airTemp")):
+            try:
+                d = noaa({"product": product, "station": sid, "date": "latest"}).get("data", [])
+                if d and d[-1].get("v") not in (None, ""):
+                    s[key] = round(float(d[-1]["v"]), 1)
+                    s[key + "Time"] = noaa_time(d[-1]["t"]).isoformat()
+            except Exception:
+                pass
+        try:
+            d = noaa({"product": "wind", "station": sid, "date": "latest"}).get("data", [])
+            if d and d[-1].get("s") not in (None, ""):
+                w = d[-1]
+                s["wind"] = {"speed": round(float(w["s"])), "gust": round(float(w.get("g") or 0)),
+                             "dir": w.get("dr"), "deg": float(w.get("d") or 0), "time": noaa_time(w["t"]).isoformat()}
+        except Exception:
+            pass
+        if "temp" in s:
+            # Also feed the regular "Water temp" view
+            temps.append({"id": f"NOAA-{sid}", "source": "NOAA", "lat": s["lat"], "lon": s["lon"], "name": s["name"],
+                          "waterType": "tidal", "temp": s["temp"], "tempTime": s["tempTime"]})
+    print(f"Tides: forecasts for {sum(1 for x in stations if x['hilo'])} points; "
+          f"{sum(1 for x in stations if 'level' in x)} live water levels; {len(temps)} water temperatures")
+    return {"updated": now.isoformat(), "stations": stations, "temps": temps}
+
+
 if __name__ == "__main__":
     import traceback
 
@@ -759,14 +865,23 @@ if __name__ == "__main__":
     des = safe("NHDES", collect_nhdes)
     print(f"NHDES: {len(des)} stations "
           f"({sum(1 for x in des if 'temp' in x)} with water temp, {sum(1 for x in des if (x.get('baseline') or {}).get('avg') is not None)} with monthly average)")
-    all_sites = sites + corps + des
+    tides = safe("Tides", collect_tides)
+    if not isinstance(tides, dict):
+        tides = None
+    all_sites = sites + corps + des + ((tides or {}).get("temps") or [])
     if not all_sites:
         print("Nothing collected this time; keeping the previous data.json.")
     else:
         acc = safe("Boat access", collect_access)
         if not isinstance(acc, dict):
             acc = PREV_ACCESS  # keep last month's list if the state server is down
-        result = {"updated": now.isoformat(), "errors": errors[:50], "sites": all_sites, "access": acc}
+        if tides is None:
+            try:
+                with open("data.json") as fh:
+                    tides = json.load(fh).get("tides")  # keep the last good tide forecast
+            except Exception:
+                tides = None
+        result = {"updated": now.isoformat(), "errors": errors[:50], "sites": all_sites, "access": acc, "tides": tides}
         with open("data.json", "w") as fh:
             json.dump(result, fh, separators=(",", ":"))
     for e in errors[:20]:
