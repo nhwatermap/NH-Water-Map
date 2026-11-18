@@ -319,38 +319,61 @@ def collect_usgs():
             errors.append(f"USGS history {s['id']}: {e}")
     print(f"USGS history: got 7 days of readings for {with_history} gauges")
 
-    computed = 0
+    RAW_BUDGET = 40  # gauges per run that may use raw 15-minute history (about 10 requests each)
+    computed = raw_used = 0
+    start10 = datetime(LOCAL.year - 10, 1, 1, tzinfo=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    end10 = month_window(0)[0].strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    def raw_month(sid, st, en):
+        data = usgs("continuous/items", {"monitoring_location_id": sid, "parameter_code": "00065",
+                                         "datetime": st.strftime("%Y-%m-%dT%H:%M:%SZ") + "/" + en.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                                         "limit": 10000, "properties": "time,value"})
+        pts = []
+        for f in data.get("features", []):
+            pr = f.get("properties", {})
+            try:
+                pts.append((parse_time(pr["time"]), float(pr["value"])))
+            except Exception:
+                pass
+        return pts
+
     for s in sites.values():
         if s.get("height") is None:
             continue
         b = cached_baseline(s["id"])
+        # 1) quick try: USGS daily averages of water level, when the gauge has them
         if b is None:
             computed += 1
-            b = {"month": MONTH_KEY, "avg": None}
+            b = {"month": MONTH_KEY, "avg": None, "via": "daily"}
             try:
-                start = datetime(LOCAL.year - 10, 1, 1, tzinfo=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-                end = month_window(0)[0].strftime("%Y-%m-%dT%H:%M:%SZ")
                 data = usgs("daily/items", {"monitoring_location_id": s["id"], "parameter_code": "00065",
-                                            "statistic_id": "00003", "datetime": f"{start}/{end}", "limit": 10000})
+                                            "statistic_id": "00003", "datetime": f"{start10}/{end10}", "limit": 10000})
                 pts = []
-                for _ in range(5):
-                    for f in data.get("features", []):
-                        pr = f.get("properties", {})
-                        try:
-                            pts.append((parse_time(pr["time"]), float(pr["value"])))
-                        except Exception:
-                            pass
-                    nxt = next((l.get("href") for l in data.get("links", []) if l.get("rel") == "next"), None)
-                    if not nxt:
-                        break
-                    data = get(nxt)
-                b = baseline_from_points(pts)
+                for f in data.get("features", []):
+                    pr = f.get("properties", {})
+                    try:
+                        pts.append((parse_time(pr["time"]), float(pr["value"])))
+                    except Exception:
+                        pass
+                got = baseline_from_points(pts)
+                if got.get("avg") is not None:
+                    b = {**got, "via": "daily"}
             except Exception as e:
-                errors.append(f"USGS baseline {s['id']}: {e}")
+                errors.append(f"USGS daily {s['id']}: {e}")
             time.sleep(0.3)
+        # 2) otherwise: raw readings for each past year's month, a batch of gauges per run
+        if b.get("avg") is None and b.get("via") != "raw":
+            if raw_used < RAW_BUDGET:
+                raw_used += 1
+                got = yearly_baseline(lambda st, en, sid=s["id"]: raw_month(sid, st, en))
+                b = {**got, "via": "raw"}
+            else:
+                b = {"month": MONTH_KEY, "avg": None, "via": "daily", "pending": True}
         s["baseline"] = b
-    print(f"USGS monthly averages: {sum(1 for s in sites.values() if (s.get('baseline') or {}).get('avg') is not None)} gauges "
-          f"({computed} calculated this run, the rest reused)")
+    have = sum(1 for x in sites.values() if (x.get("baseline") or {}).get("avg") is not None)
+    pending = sum(1 for x in sites.values() if (x.get("baseline") or {}).get("pending"))
+    print(f"USGS monthly averages: {have} gauges have one; {raw_used} worked out from raw readings this run; "
+          f"{pending} still waiting for a later run")
     return list(sites.values())
 
 
