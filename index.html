@@ -392,9 +392,19 @@ const WetlandLayer = L.TileLayer.extend({
 });
 const wetlands = new WetlandLayer('', { tileSize: 512, minZoom: WET_MIN_ZOOM, maxZoom: 18, opacity: 1,
   attribution: 'Wetlands: U.S. Fish &amp; Wildlife Service NWI' });
-// If the server ever refuses our custom colors, fall back to its standard wetland colors
-let wetErrors = 0;
-wetlands.on('tileerror', () => { if (!wetlands.fallback && ++wetErrors >= 3) { wetlands.fallback = true; wetlands.redraw(); } });
+// A slow or failed square is retried once. Only if our custom colors never work at all
+// (no square has ever loaded) do we fall back to the server's standard colors.
+let wetErrors = 0, wetLoaded = false;
+wetlands.on('tileload', () => { wetLoaded = true; });
+wetlands.on('tileerror', e => {
+  const img = e.tile;
+  if (img && !img.dataset.retried) {
+    img.dataset.retried = '1';
+    setTimeout(() => { img.src = wetlands.getTileUrl(e.coords) + '&retry=1'; }, 1500);
+    return;
+  }
+  if (!wetLoaded && !wetlands.fallback && ++wetErrors >= 3) { wetlands.fallback = true; wetlands.redraw(); }
+});
 const overlayLayers = { wetlands };
 function updateWetNote() {
   document.getElementById('wetZoomNote').style.display = map.getZoom() < WET_MIN_ZOOM ? '' : 'none';
