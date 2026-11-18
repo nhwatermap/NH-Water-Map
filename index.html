@@ -385,25 +385,20 @@ const WetlandLayer = L.TileLayer.extend({
     const xmin = -W + c.x * span, ymax = W - c.y * span;
     const q = { bbox: [xmin, ymax - span, xmin + span, ymax].join(','), bboxSR: 3857, imageSR: 3857,
       size: this.options.tileSize + ',' + this.options.tileSize, format: 'png32', transparent: true, dpi: 96, f: 'image' };
-    if (this.fallback) { q.layers = 'show:0'; q.layerDefs = JSON.stringify({ 0: "Wetlands.WETLAND_TYPE IN ('" + WET_TYPES.join("','") + "')" }); }
-    else q.dynamicLayers = NWI_DYNAMIC;
+    q.dynamicLayers = NWI_DYNAMIC;
     return NWI + '/export?' + Object.entries(q).map(([k, v]) => k + '=' + encodeURIComponent(v)).join('&');
   }
 });
-const wetlands = new WetlandLayer('', { tileSize: 512, minZoom: WET_MIN_ZOOM, maxZoom: 18, opacity: 1,
+const wetlands = new WetlandLayer('', { tileSize: 256, minZoom: WET_MIN_ZOOM, maxZoom: 18, opacity: 1,
   attribution: 'Wetlands: U.S. Fish &amp; Wildlife Service NWI' });
-// A slow or failed square is retried once. Only if our custom colors never work at all
-// (no square has ever loaded) do we fall back to the server's standard colors.
-let wetErrors = 0, wetLoaded = false;
-wetlands.on('tileload', () => { wetLoaded = true; });
+map.attributionControl.addAttribution('Page v11');
+// A slow or failed square is retried up to twice (after 2 s, then 5 s). We never switch to the
+// server's standard green colors; a square that still fails just stays blank.
 wetlands.on('tileerror', e => {
-  const img = e.tile;
-  if (img && !img.dataset.retried) {
-    img.dataset.retried = '1';
-    setTimeout(() => { img.src = wetlands.getTileUrl(e.coords) + '&retry=1'; }, 1500);
-    return;
-  }
-  if (!wetLoaded && !wetlands.fallback && ++wetErrors >= 3) { wetlands.fallback = true; wetlands.redraw(); }
+  const img = e.tile, n = +(img.dataset.tries || 0);
+  if (n >= 2) return;
+  img.dataset.tries = n + 1;
+  setTimeout(() => { img.src = wetlands.getTileUrl(e.coords) + '&try=' + (n + 1); }, n ? 5000 : 2000);
 });
 const overlayLayers = { wetlands };
 function updateWetNote() {
