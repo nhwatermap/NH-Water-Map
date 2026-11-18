@@ -190,6 +190,57 @@ def usgs_normals(site_ids):
     return tables
 
 
+# ---------------- Monthly baseline (average for this month over the past 10 years) ----------------
+LOCAL = now.astimezone(timezone(timedelta(hours=-5)))
+MONTH = LOCAL.month
+MONTH_KEY = f"{LOCAL.year}-{MONTH:02d}"
+
+PREV = {}
+try:
+    with open("data.json") as fh:
+        PREV = {o["id"]: o for o in json.load(fh).get("sites", []) if isinstance(o, dict) and o.get("id")}
+except Exception:
+    pass
+
+
+def month_window(years_back):
+    y = LOCAL.year - years_back
+    start = datetime(y, MONTH, 1, tzinfo=timezone.utc)
+    end = datetime(y + (MONTH == 12), MONTH % 12 + 1, 1, tzinfo=timezone.utc)
+    return start, end
+
+
+def baseline_from_points(pts):
+    """Average of each past year's average for this month (each year counts equally)."""
+    by_year = {}
+    for t, v in pts:
+        if t.month == MONTH and t.year < LOCAL.year:
+            by_year.setdefault(t.year, []).append(v)
+    good = {y: vals for y, vals in by_year.items() if len(vals) >= 10}
+    if len(good) < 3:
+        return {"month": MONTH_KEY, "avg": None}
+    yearly = [sum(v) / len(v) for v in good.values()]
+    return {"month": MONTH_KEY, "avg": round(sum(yearly) / len(yearly), 2), "years": len(good)}
+
+
+def cached_baseline(site_id):
+    b = (PREV.get(site_id) or {}).get("baseline")
+    return b if isinstance(b, dict) and b.get("month") == MONTH_KEY else None
+
+
+def yearly_baseline(fetch):
+    """fetch(start, end) -> points; called once per past year."""
+    pts = []
+    for yb in range(1, 11):
+        start, end = month_window(yb)
+        try:
+            pts += fetch(start, end)
+        except Exception:
+            pass
+        time.sleep(0.2)
+    return baseline_from_points(pts)
+
+
 # ---------------- USGS ----------------
 def collect_usgs():
     sites = {}
@@ -268,20 +319,38 @@ def collect_usgs():
             errors.append(f"USGS history {s['id']}: {e}")
     print(f"USGS history: got 7 days of readings for {with_history} gauges")
 
-    tables = usgs_normals(list(sites.keys()))
+    computed = 0
     for s in sites.values():
-        for basis, code, key in (("flow", "00060", "flow"), ("level", "00065", "height")):
-            if s.get(key) is None or (s["id"], code) not in tables:
-                continue
-            pct = pct_from_table(s[key], tables[(s["id"], code)])
-            if pct is not None:
-                typ = median_from_table(tables[(s["id"], code)])
-                s["normal"] = {"pct": round(pct), "cat": category(pct), "basis": basis, "source": "USGS long-term records",
-                               "typical": None if typ is None else round(typ, 2), "now": s[key],
-                               "unit": "cfs" if basis == "flow" else "ft"}
-                break
-    print(f"USGS normals: found history for {len(tables)} gauge readings, "
-          f"{sum(1 for s in sites.values() if 'normal' in s)} gauges compared")
+        if s.get("height") is None:
+            continue
+        b = cached_baseline(s["id"])
+        if b is None:
+            computed += 1
+            b = {"month": MONTH_KEY, "avg": None}
+            try:
+                start = datetime(LOCAL.year - 10, 1, 1, tzinfo=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                end = month_window(0)[0].strftime("%Y-%m-%dT%H:%M:%SZ")
+                data = usgs("daily/items", {"monitoring_location_id": s["id"], "parameter_code": "00065",
+                                            "statistic_id": "00003", "datetime": f"{start}/{end}", "limit": 10000})
+                pts = []
+                for _ in range(5):
+                    for f in data.get("features", []):
+                        pr = f.get("properties", {})
+                        try:
+                            pts.append((parse_time(pr["time"]), float(pr["value"])))
+                        except Exception:
+                            pass
+                    nxt = next((l.get("href") for l in data.get("links", []) if l.get("rel") == "next"), None)
+                    if not nxt:
+                        break
+                    data = get(nxt)
+                b = baseline_from_points(pts)
+            except Exception as e:
+                errors.append(f"USGS baseline {s['id']}: {e}")
+            time.sleep(0.3)
+        s["baseline"] = b
+    print(f"USGS monthly averages: {sum(1 for s in sites.values() if (s.get('baseline') or {}).get('avg') is not None)} gauges "
+          f"({computed} calculated this run, the rest reused)")
     return list(sites.values())
 
 
@@ -377,26 +446,10 @@ def collect_corps():
                     s["change"] = change_24h(pts)
                     s["series"] = hourly(pts)
                     s["levelLabel"] = "Pool elevation" if level.split(".")[1] == "Elev" else "Water level"
-                    # Normal for this time of year: readings within a week of today's date in each of the past 10 years
-                    history, years = [], 0
-                    for y in range(1, 11):
-                        try:
-                            mid = now.replace(year=now.year - y)
-                        except ValueError:
-                            mid = now.replace(year=now.year - y, day=28)
-                        try:
-                            past = corps_series(level, days=14, end=mid + timedelta(days=7))
-                        except Exception:
-                            past = []
-                        if past:
-                            years += 1
-                            history += [v for _, v in past]
-                        time.sleep(0.2)
-                    pct = pct_from_history(s["height"], history) if years >= 3 else None
-                    if pct is not None:
-                        s["normal"] = {"pct": round(pct), "cat": category(pct), "basis": "level",
-                                       "source": f"Army Corps readings, {years} past years",
-                                       "typical": round(median(history), 2), "now": s["height"], "unit": "ft"}
+                    b = cached_baseline(s["id"])
+                    if b is None:
+                        b = yearly_baseline(lambda st, en: corps_series(level, days=(en - st).days, end=en))
+                    s["baseline"] = b
             except Exception as e:
                 errors.append(f"Army Corps {loc} level: {e}")
 
@@ -544,25 +597,10 @@ def collect_nhdes():
                     s["series"] = hourly(pts)
                     pname = (param.get("name") or "").lower()
                     s["levelLabel"] = "Lake level" if ("elev" in pname or "lake" in pname) else "Water level"
-                    history, years = [], 0
-                    for y in range(1, 11):
-                        try:
-                            mid = now.replace(year=now.year - y)
-                        except ValueError:
-                            mid = now.replace(year=now.year - y, day=28)
-                        try:
-                            past = des_values(ts_id, mid - timedelta(days=7), mid + timedelta(days=7))
-                        except Exception:
-                            past = []
-                        if past:
-                            years += 1
-                            history += [v for _, v in past]
-                        time.sleep(0.2)
-                    pct = pct_from_history(s["height"], history) if years >= 3 else None
-                    if pct is not None:
-                        s["normal"] = {"pct": round(pct), "cat": category(pct), "basis": "level",
-                                       "source": f"NHDES readings, {years} past years",
-                                       "typical": round(median(history), 2), "now": s["height"], "unit": "ft"}
+                    b = cached_baseline(s["id"])
+                    if b is None:
+                        b = yearly_baseline(lambda st, en: des_values(ts_id, st, en))
+                    s["baseline"] = b
             except Exception as e:
                 errors.append(f"NHDES {code} level: {e}")
         if "temp" in best:
@@ -610,10 +648,10 @@ if __name__ == "__main__":
     sites = safe("USGS", collect_usgs)
     print(f"USGS: {len(sites)} gauges")
     corps = safe("Army Corps", collect_corps)
-    print(f"Army Corps: {len(corps)} stations")
+    print(f"Army Corps: {len(corps)} stations, {sum(1 for x in corps if (x.get('baseline') or {}).get('avg') is not None)} with monthly average")
     des = safe("NHDES", collect_nhdes)
     print(f"NHDES: {len(des)} stations "
-          f"({sum(1 for x in des if 'temp' in x)} with water temp, {sum(1 for x in des if 'normal' in x)} compared to normal)")
+          f"({sum(1 for x in des if 'temp' in x)} with water temp, {sum(1 for x in des if (x.get('baseline') or {}).get('avg') is not None)} with monthly average)")
     all_sites = sites + corps + des
     if not all_sites:
         print("Nothing collected this time; keeping the previous data.json.")

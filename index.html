@@ -86,7 +86,7 @@ main{position:relative;flex:1;min-height:0}
   <h1>NH Water Conditions</h1>
   <div class="modes" role="group" aria-label="What to color the map by">
     <button data-mode="change" aria-pressed="true">24-hr change</button>
-    <button data-mode="normal" aria-pressed="false">vs. normal</button>
+    <button data-mode="normal" aria-pressed="false" id="normalBtn">vs. month avg</button>
     <button data-mode="level" aria-pressed="false">Water level</button>
     <button data-mode="temp" aria-pressed="false">Water temp</button>
   </div>
@@ -135,8 +135,13 @@ function colorFor(s) {
     return css('--rise2');
   }
   if (mode === 'normal') {
-    const c = s.normal && s.normal.cat;
-    return c ? css({ 'much-below': '--n1', below: '--n2', normal: '--n3', above: '--n4', 'much-above': '--n5' }[c]) : null;
+    const d = avgDiff(s);
+    if (d == null) return null;
+    if (d <= -1) return css('--n1');
+    if (d <= -0.5) return css('--n2');
+    if (d < 0.5) return css('--n3');
+    if (d < 1) return css('--n4');
+    return css('--n5');
   }
   if (mode === 'temp') {
     const t = s.temp;
@@ -158,26 +163,24 @@ function tipText(s) {
   return head + fmt(s.height, 2) + ' ft';
 }
 
-const CAT_LABEL = { 'much-below': 'Much below normal', below: 'Below normal', normal: 'Normal', above: 'Above normal', 'much-above': 'Much above normal' };
-function ordinal(n) { const v = n % 100; return n + (['th', 'st', 'nd', 'rd'][(v - 20) % 10] || ['th', 'st', 'nd', 'rd'][v] || 'th'); }
-function diffText(n) {
-  if (n.typical == null || n.now == null) return CAT_LABEL[n.cat].replace('normal', 'typical');
-  if (n.unit === 'cfs') {
-    if (!n.typical) return CAT_LABEL[n.cat].replace('normal', 'typical');
-    const r = n.now / n.typical;
-    if (r >= 0.9 && r <= 1.1) return 'About typical';
-    if (r > 1) return r >= 1.95 ? (r).toFixed(1).replace(/\.0$/, '') + '× typical flow' : Math.round((r - 1) * 100) + '% above typical';
-    return Math.round((1 - r) * 100) + '% below typical';
-  }
-  const d = n.now - n.typical;
-  if (Math.abs(d) < 0.05) return 'About typical';
-  const amt = Math.abs(d) < 1 ? Math.round(Math.abs(d) * 12) + ' in' : Math.abs(d).toFixed(1) + ' ft';
-  return amt + (d > 0 ? ' above' : ' below') + ' typical';
+const monthName = () => new Date(collectedAt).toLocaleDateString(undefined, { month: 'long' });
+const monthShort = () => new Date(collectedAt).toLocaleDateString(undefined, { month: 'short' });
+// Difference from this month's 10-year average, in feet (null when unknown)
+function avgDiff(s) {
+  const b = s.baseline;
+  return (b && b.avg != null && s.height != null) ? s.height - b.avg : null;
 }
-function fmtVal(v, unit) { return unit === 'cfs' ? Math.round(v).toLocaleString() + ' cfs' : Number(v).toFixed(2) + ' ft'; }
+function feetText(d) {
+  const a = Math.abs(d);
+  if (a < 0.05) return 'about even';
+  if (a < 1) return Math.round(a * 12) + ' in';
+  return a.toFixed(1) + ' ft';
+}
 function normalText(s) {
-  if (!s.normal) return 'No history to compare';
-  return diffText(s.normal) + ' for this date';
+  const d = avgDiff(s);
+  if (d == null) return 'No 10-year average yet';
+  if (Math.abs(d) < 0.05) return 'Right at the ' + monthName() + ' average';
+  return feetText(d) + (d > 0 ? ' above' : ' below') + ' the ' + monthName() + ' average';
 }
 
 function draw() {
@@ -208,14 +211,14 @@ function draw() {
 function drawLegend() {
   const rows = {
     change: [['--fall2', 'Falling fast (½ ft or more)'], ['--fall1', 'Falling'], ['--steady', 'Steady (within 0.1 ft)'], ['--rise1', 'Rising'], ['--rise2', 'Rising fast (½ ft or more)']],
-    normal: [['--n5', 'Much higher than typical'], ['--n4', 'Higher than typical'], ['--n3', 'About typical'], ['--n2', 'Lower than typical'], ['--n1', 'Much lower than typical']],
+    normal: [['--n5', '1 ft or more above'], ['--n4', '6 in to 1 ft above'], ['--n3', 'Within 6 in of average'], ['--n2', '6 in to 1 ft below'], ['--n1', '1 ft or more below']],
     temp: [['--t1', 'Below 40 °F'], ['--t2', '40–50 °F'], ['--t3', '50–60 °F'], ['--t4', '60–70 °F'], ['--t5', '70 °F and up']],
     level: [['--lvl', 'Reporting water level']]
   }[mode];
-  const title = { normal: 'Compared to typical for this date', change: 'Water level change, last 24 hrs', temp: 'Water temperature', level: 'Water level' }[mode];
+  const title = { normal: `Compared to the ${monthName()} average`, change: 'Water level change, last 24 hrs', temp: 'Water temperature', level: 'Water level' }[mode];
   const note = {
     change: 'Steady means it moved less than about an inch either way.',
-    normal: '“Much” higher or lower means among the highest or lowest tenth of past years on this date. Tap a station for typical vs. now.',
+    normal: `Average water level for ${monthName()} over the past 10 years. Tap a station for the exact numbers.`,
     temp: 'Only some stations measure water temperature.',
     level: 'Each station has its own zero point, so compare a spot to itself over time. Tap one for its 7-day chart.'
   }[mode];
@@ -262,10 +265,11 @@ function openDetail(s) {
     <p class="sub">Last reading ${when(s.heightTime || s.flowTime || s.tempTime)}</p>
     <div class="stats">
       <div class="stat"><span>${esc(levelLabel)}</span><b>${s.height == null ? '—' : fmt(s.height, 2) + ' ft'}</b></div>
+      <div class="stat"><span>${monthShort()} average (10 yrs)</span><b>${s.baseline && s.baseline.avg != null ? fmt(s.baseline.avg, 2) + ' ft' : '—'}</b>${s.baseline && s.baseline.years ? `<small>${s.baseline.years} years of records</small>` : ''}</div>
+      <div class="stat"><span>Now vs. ${monthShort()} average</span><b>${avgDiff(s) == null ? '—' : (Math.abs(avgDiff(s)) < 0.05 ? 'Even' : (avgDiff(s) > 0 ? '+' : '−') + feetText(avgDiff(s)))}</b>${avgDiff(s) == null ? '' : `<small>${avgDiff(s) > 0.05 ? 'higher' : avgDiff(s) < -0.05 ? 'lower' : 'same'} than usual</small>`}</div>
       <div class="stat"><span>24-hr change</span><b>${s.change == null ? '—' : (s.change > 0 ? '+' : '') + fmt(s.change, 2) + ' ft'}</b></div>
       <div class="stat"><span>Water temp</span><b>${s.temp == null ? 'Not measured' : fmt(s.temp) + ' °F'}</b></div>
       <div class="stat"><span>${esc(s.flowLabel || 'Flow')}</span><b>${s.flow == null ? '—' : Math.round(s.flow).toLocaleString() + ' cfs'}</b></div>
-      <div class="stat wide"><span>Compared to typical for ${new Date(collectedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span><b>${s.normal ? diffText(s.normal) : 'No history to compare'}</b>${s.normal && s.normal.typical != null ? `<small>Typical: ${fmtVal(s.normal.typical, s.normal.unit)} · Now: ${fmtVal(s.normal.now, s.normal.unit)}${s.normal.unit === 'cfs' ? ' (flow)' : ''}<br>${esc(s.normal.source)}</small>` : s.normal ? `<small>${esc(s.normal.source)}</small>` : ''}</div>
     </div>
     <div class="chart-title">${esc(levelLabel)}, last 7 days</div>
     <div class="chart-wrap">${chartSVG(s.series)}</div>
@@ -284,6 +288,7 @@ fetch('data.json?v=' + Date.now())
   .then(r => { if (!r.ok) throw new Error('data.json not found yet'); return r.json(); })
   .then(d => {
     if (d.updated) collectedAt = +new Date(d.updated);
+    document.getElementById('normalBtn').textContent = 'vs. ' + monthShort() + ' avg';
     sites = (d.sites || []).filter(s => s.lat != null && s.lon != null);
     draw();
     const count = src => sites.filter(s => s.source === src).length;
