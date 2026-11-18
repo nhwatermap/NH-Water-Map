@@ -51,6 +51,8 @@ main{position:relative;flex:1;min-height:0}
 .legend .row{display:flex;align-items:center;gap:.5rem;margin:.15rem 0}
 .legend .dot{width:12px;height:12px;border-radius:50%;flex:none;border:1px solid rgba(0,0,0,.25)}
 .legend p{margin:.4rem 0 0;color:var(--muted);font-size:.82rem}
+.legend .shapes{border-top:1px solid var(--line);margin-top:.5rem;padding-top:.45rem}
+.legend .shape{width:12px;height:12px;flex:none;border:2px solid var(--ink)}
 .banner{position:absolute;top:.75rem;left:50%;transform:translateX(-50%);z-index:600;background:var(--panel);
   border:1px solid var(--rise2);border-left-width:4px;border-radius:6px;padding:.6rem .9rem;max-width:min(560px,calc(100% - 1.5rem));
   font-size:.9rem;display:none;overflow-wrap:anywhere}
@@ -104,6 +106,7 @@ main{position:relative;flex:1;min-height:0}
 <script>
 const STALE_HOURS = 6; // readings older than this show as hollow circles (often ice)
 let sites = [];
+let collectedAt = Date.now(); // when the collector last ran
 let mode = 'change';
 const markers = L.layerGroup();
 
@@ -117,7 +120,7 @@ const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).
 const fmt = (v, d = 1) => (v == null || isNaN(v)) ? '—' : Number(v).toFixed(d);
 const esc = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const when = t => t ? new Date(t).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
-const isStale = (s, key) => !s[key + 'Time'] || (Date.now() - new Date(s[key + 'Time'])) > STALE_HOURS * 3600e3;
+const isStale = (s, key) => !s[key + 'Time'] || (collectedAt - new Date(s[key + 'Time'])) > STALE_HOURS * 3600e3;
 
 function showError(msg) { const b = document.getElementById('banner'); b.textContent = msg; b.classList.add('show'); }
 
@@ -169,16 +172,18 @@ function draw() {
     const col = colorFor(s);
     if (!col) continue;
     const stale = isStale(s, key);
+    const fill = stale ? 'transparent' : col, edge = stale ? css('--muted') : css('--ink');
     const corps = s.source === 'Army Corps', des = s.source === 'NHDES';
-    const opts = { weight: stale ? 2 : (corps ? 2.5 : 1), color: stale ? col : (corps ? css('--ink') : 'rgba(0,0,0,.45)'), fillColor: col, fillOpacity: stale ? 0 : .9 };
+    const opts = { weight: stale ? 2 : 1, color: stale ? edge : 'rgba(0,0,0,.45)', fillColor: col, fillOpacity: stale ? 0 : .9 };
     const m = des
       ? L.marker([s.lat, s.lon], { icon: L.divIcon({ className: '', iconSize: [16, 16], iconAnchor: [8, 8],
-          html: `<div style="width:14px;height:14px;border-radius:2px;background:${stale ? 'transparent' : col};border:2px solid ${stale ? col : css('--ink')}"></div>` }) })
+          html: `<div style="width:14px;height:14px;border-radius:2px;background:${fill};border:2px solid ${edge}"></div>` }) })
       : corps
       ? L.marker([s.lat, s.lon], { icon: L.divIcon({ className: '', iconSize: [18, 18], iconAnchor: [9, 9],
-          html: `<div style="width:16px;height:16px;transform:rotate(45deg);background:${stale ? 'transparent' : col};border:2px solid ${stale ? col : css('--ink')}"></div>` }) })
+          html: `<div style="width:14px;height:14px;transform:rotate(45deg);background:${fill};border:2px solid ${edge}"></div>` }) })
       : L.circleMarker([s.lat, s.lon], { radius: 8, ...opts });
-    m.bindTooltip(tipText(s) + (stale ? '<br>(no recent reading)' : ''));
+    const last = s[key + 'Time'];
+    m.bindTooltip(stale ? esc(s.name) + '<br>No recent reading' + (last ? ' (last: ' + when(last) + ')' : '') : tipText(s));
     m.on('click', () => openDetail(s));
     m.addTo(markers);
   }
@@ -194,13 +199,19 @@ function drawLegend() {
   }[mode];
   const title = { normal: 'Compared to normal for this date', change: 'Water level change, last 24 hrs', temp: 'Water temperature', level: 'Water level' }[mode];
   const note = {
-    change: 'Circles are USGS gauges, diamonds are Army Corps stations, squares are NH DES lake and dam stations. Hollow means no recent reading, often from ice.',
+    change: 'Steady means it moved less than about an inch either way.',
     normal: 'Compares today with past years on the same date. USGS gauges use flow where they have it; Army Corps and NH DES stations use the last 10 years of levels.',
     temp: 'Only some stations measure water temperature.',
     level: 'Each station has its own zero point, so compare a spot to itself over time. Tap one for its 7-day chart.'
   }[mode];
   document.getElementById('legend').innerHTML = `<strong>${title}</strong>` +
-    rows.map(([v, l]) => `<div class="row"><span class="dot" style="background:${css(v)}"></span>${l}</div>`).join('') + `<p>${note}</p>`;
+    rows.map(([v, l]) => `<div class="row"><span class="dot" style="background:${css(v)}"></span>${l}</div>`).join('') + `<p>${note}</p>` +
+    `<div class="shapes">
+      <div class="row"><span class="shape" style="border-radius:50%"></span>USGS river gauge</div>
+      <div class="row"><span class="shape" style="transform:rotate(45deg) scale(.85)"></span>Army Corps river or dam</div>
+      <div class="row"><span class="shape" style="border-radius:2px"></span>NH DES lake or dam</div>
+      <div class="row"><span class="shape" style="border-radius:50%;border-color:var(--muted);border-style:solid;background:transparent"></span>Hollow gray: no recent reading (often ice or sensor out for winter)</div>
+    </div>`;
 }
 
 function chartSVG(series) {
@@ -257,6 +268,7 @@ document.querySelectorAll('.modes button').forEach(b => b.onclick = () => {
 fetch('data.json?v=' + Date.now())
   .then(r => { if (!r.ok) throw new Error('data.json not found yet'); return r.json(); })
   .then(d => {
+    if (d.updated) collectedAt = +new Date(d.updated);
     sites = (d.sites || []).filter(s => s.lat != null && s.lon != null);
     draw();
     const count = src => sites.filter(s => s.source === src).length;
