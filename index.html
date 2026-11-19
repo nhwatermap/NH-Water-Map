@@ -223,6 +223,7 @@ main{position:relative;flex:1;min-height:0}
         <label><input type="radio" name="basemap" value="esri"> Topo (Esri)</label>
         <label><input type="radio" name="basemap" value="usgsTopo"> USGS topo</label>
         <label><input type="radio" name="basemap" value="usgsSat"> Satellite (USGS)</label>
+        <small id="satNote" class="layer-note" style="flex-basis:100%;margin:0" aria-live="polite"></small>
       </fieldset>
       <label class="layer-row"><input type="checkbox" data-layer="mine" data-default="on"><span class="acc-icon" style="background:#c0392b;border-radius:50% 50% 50% 0;transform:rotate(-45deg)"></span><span><b>My markers</b><small>Spots you’ve saved. They’re stored only in this browser on this device.</small></span></label>
       <label class="layer-row"><input type="checkbox" data-layer="tides" data-default="on"><span class="acc-icon tide" data-icon="tide"></span><span><b>Tides</b><small>Seacoast tide times and heights for the next 7 days. Live NOAA stations also show the current water level, water temp and wind.</small></span></label>
@@ -264,20 +265,44 @@ const BASEMAPS = {
     { maxZoom: 17, attribution: 'Map: Esri, HERE, Garmin, USGS, NGA, EPA, NPS' }),
   usgsTopo: L.tileLayer('https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}',
     { maxZoom: 18, maxNativeZoom: 16, attribution: 'Map: USGS The National Map' }),
-  // Drawn on request by USGS (the way USGS's own examples connect to it); the pre-made tiles have gaps
-  usgsSat: L.tileLayer.wms('https://basemap.nationalmap.gov/arcgis/services/USGSImageryTopo/MapServer/WmsServer',
-    { layers: '0', format: 'image/jpeg', transparent: false, maxZoom: 18, attribution: 'Map: USGS The National Map (imagery and labels)' })
+  usgsSat: L.layerGroup()  // filled in below: tries several USGS imagery sources until one works
 };
+// Satellite: try USGS imagery sources in turn until one loads
+const SAT_SOURCES = [
+  ['USGS imagery with labels', () => L.tileLayer('https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryTopo/MapServer/tile/{z}/{y}/{x}', { maxZoom: 18, maxNativeZoom: 16 })],
+  ['USGS imagery', () => L.tileLayer('https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}', { maxZoom: 18, maxNativeZoom: 16 })],
+  ['USGS imagery with labels (on request)', () => L.tileLayer.wms('https://basemap.nationalmap.gov/arcgis/services/USGSImageryTopo/MapServer/WmsServer', { layers: '0', format: 'image/jpeg', maxZoom: 18 })],
+  ['USGS imagery (on request)', () => L.tileLayer.wms('https://basemap.nationalmap.gov/arcgis/services/USGSImageryOnly/MapServer/WmsServer', { layers: '0', format: 'image/jpeg', maxZoom: 18 })]
+];
+let satIdx = 0, satLoaded = 0, satFailed = 0;
+function satNote(text) { const el = document.getElementById('satNote'); if (el) el.textContent = text; }
+function useSatSource(i) {
+  BASEMAPS.usgsSat.clearLayers();
+  satIdx = i; satLoaded = 0; satFailed = 0;
+  if (i >= SAT_SOURCES.length) { satNote('USGS satellite imagery isn’t loading right now. Try again later.'); return; }
+  const [name, make] = SAT_SOURCES[i];
+  const layer = make();
+  layer.options.attribution = 'Map: USGS The National Map (imagery)';
+  layer.on('tileload', () => { if (!satLoaded++) satNote('Satellite source: ' + name); });
+  layer.on('tileerror', () => { if (!satLoaded && ++satFailed >= 4) useSatSource(i + 1); });
+  BASEMAPS.usgsSat.addLayer(layer);
+  if (BASEMAPS.usgsSat._map) layer.bringToBack();
+  satNote('Loading satellite imagery…');
+}
+useSatSource(0);
 let basemapKey = 'esri';
 try { if (BASEMAPS[localStorage.getItem('basemap')]) basemapKey = localStorage.getItem('basemap'); } catch (e) { }
 BASEMAPS[basemapKey].addTo(map);
 map.attributionControl.addAttribution('Water data: USGS, US Army Corps of Engineers, NH DES | Access sites: NH Fish and Game via NH GRANIT');
+function showSatNote() { const el = document.getElementById('satNote'); if (el) el.style.display = basemapKey === 'usgsSat' ? '' : 'none'; }
 function setBasemap(key) {
   if (!BASEMAPS[key] || key === basemapKey) return;
   map.removeLayer(BASEMAPS[basemapKey]);
-  BASEMAPS[key].addTo(map).bringToBack();
+  BASEMAPS[key].addTo(map);
+  BASEMAPS[key].eachLayer ? BASEMAPS[key].eachLayer(l => l.bringToBack && l.bringToBack()) : BASEMAPS[key].bringToBack();
   basemapKey = key;
   try { localStorage.setItem('basemap', key); } catch (e) { }
+  showSatNote();
 }
 markers.addTo(map);
 
@@ -588,7 +613,7 @@ const WetlandLayer = L.TileLayer.extend({
 });
 const wetlands = new WetlandLayer('', { tileSize: 256, minZoom: WET_MIN_ZOOM, maxZoom: 18, opacity: 1,
   attribution: 'Wetlands: U.S. Fish &amp; Wildlife Service NWI' });
-map.attributionControl.addAttribution('Page v24 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
+map.attributionControl.addAttribution('Page v25 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
 // A slow or failed square is retried up to twice (after 2 s, then 5 s). We never switch to the
 // server's standard green colors; a square that still fails just stays blank.
 wetlands.on('tileerror', e => {
@@ -1098,6 +1123,7 @@ document.addEventListener('click', e => {
 
 
 // Map style radio buttons
+showSatNote();
 document.querySelectorAll('input[name=basemap]').forEach(r => {
   r.checked = r.value === basemapKey;
   r.addEventListener('change', () => r.checked && setBasemap(r.value));
