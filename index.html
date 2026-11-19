@@ -86,6 +86,12 @@ main{position:relative;flex:1;min-height:0}
 .layer-row b{display:block;font-weight:600}
 .layer-row small{display:block;color:var(--muted);font-size:.8rem;line-height:1.3}
 .layer-note{color:var(--muted);font-size:.75rem;margin:.35rem 0 0;line-height:1.3}
+.busy{position:absolute;left:50%;bottom:2.6rem;transform:translateX(-50%);z-index:640;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:999px;padding:.4rem .9rem;font-size:.88rem;font-weight:600;box-shadow:0 2px 6px rgba(0,0,0,.3);display:none;white-space:nowrap;pointer-events:none}
+.busy.show{display:block}
+.busy.dots::after{content:'';display:inline-block;width:1.2em;text-align:left;animation:busydots 1.2s steps(4,end) infinite}
+@keyframes busydots{0%{content:''}25%{content:'.'}50%{content:'..'}75%{content:'...'}}
+@media (prefers-reduced-motion: reduce){.busy.dots::after{animation:none;content:'…'}}
+
 .map-style{border:0;margin:0 0 .3rem;padding:.2rem 0 .5rem;display:flex;flex-wrap:wrap;gap:.3rem .8rem}
 .map-style legend{font-weight:600;padding:0;margin-bottom:.3rem;font-size:.85rem;color:var(--muted)}
 .map-style label{display:flex;align-items:center;gap:.3rem;cursor:pointer;font-size:.88rem}
@@ -242,6 +248,7 @@ main{position:relative;flex:1;min-height:0}
     <button class="close" id="close" aria-label="Close details">×</button>
     <div id="detailBody"></div>
   </aside>
+  <div class="busy" id="busy" role="status" aria-live="polite"></div>
   <div class="crosshair" aria-hidden="true"><svg viewBox="0 0 44 44" width="44" height="44"><g stroke="#fff" stroke-width="4" stroke-linecap="round"><path d="M22 2v13M22 29v13M2 22h13M29 22h13"/><circle cx="22" cy="22" r="1.6" fill="#fff"/></g><g stroke="#c0392b" stroke-width="2" stroke-linecap="round"><path d="M22 2v13M22 29v13M2 22h13M29 22h13"/></g><circle cx="22" cy="22" r="1.4" fill="#c0392b"/></svg></div>
   <div class="place-bar" id="placeBar" role="dialog" aria-label="Place marker">
     <p id="placeMsg">Click the map, or drag it, to put the crosshair on your spot.</p>
@@ -613,7 +620,7 @@ const WetlandLayer = L.TileLayer.extend({
 });
 const wetlands = new WetlandLayer('', { tileSize: 256, minZoom: WET_MIN_ZOOM, maxZoom: 18, opacity: 1,
   attribution: 'Wetlands: U.S. Fish &amp; Wildlife Service NWI' });
-map.attributionControl.addAttribution('Page v25 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
+map.attributionControl.addAttribution('Page v26 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
 // A slow or failed square is retried up to twice (after 2 s, then 5 s). We never switch to the
 // server's standard green colors; a square that still fails just stays blank.
 wetlands.on('tileerror', e => {
@@ -1127,6 +1134,45 @@ showSatNote();
 document.querySelectorAll('input[name=basemap]').forEach(r => {
   r.checked = r.value === basemapKey;
   r.addEventListener('change', () => r.checked && setBasemap(r.value));
+});
+
+
+// ---------- "Loading…" pill for slow layers ----------
+const busyJobs = new Map();
+let busyHint = null, busyHintTimer = null;
+function renderBusy() {
+  const el = document.getElementById('busy');
+  const first = busyJobs.size ? [...busyJobs.values()][0] : null;
+  if (first) { el.textContent = first; el.className = 'busy show dots'; }
+  else if (busyHint) { el.textContent = busyHint; el.className = 'busy show'; }
+  else el.className = 'busy';
+}
+function setBusy(key, text) {
+  clearTimeout(setBusy['t_' + key]);
+  if (text) {
+    busyJobs.set(key, text);
+    setBusy['t_' + key] = setTimeout(() => { busyJobs.delete(key); renderBusy(); }, 30000); // never stick forever
+  } else busyJobs.delete(key);
+  renderBusy();
+}
+function flashHint(text) {
+  busyHint = text; renderBusy();
+  clearTimeout(busyHintTimer);
+  busyHintTimer = setTimeout(() => { busyHint = null; renderBusy(); }, 5000);
+}
+function watchLoading(layer, key, text) {
+  layer.on('loading', () => setBusy(key, text));
+  layer.on('load', () => setBusy(key, null));
+  layer.on('remove', () => setBusy(key, null));
+}
+watchLoading(wetlands, 'wet', 'Loading wetland shading');
+watchLoading(BASEMAPS.usgsTopo, 'base', 'Loading map');
+// Satellite: watch whichever USGS source is in use
+const _useSat = useSatSource;
+useSatSource = function (i) { _useSat(i); BASEMAPS.usgsSat.eachLayer(l => watchLoading(l, 'sat', 'Loading satellite imagery')); };
+BASEMAPS.usgsSat.eachLayer(l => watchLoading(l, 'sat', 'Loading satellite imagery'));
+document.querySelector('[data-layer="wetlands"]').addEventListener('change', e => {
+  if (e.target.checked && map.getZoom() < WET_MIN_ZOOM) flashHint('Zoom in closer to see wetland shading');
 });
 
 function updateWetNote() {
