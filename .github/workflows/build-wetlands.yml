@@ -1,0 +1,34 @@
+name: Build wetlands
+
+on:
+  workflow_dispatch:       # only runs when you press "Run workflow" (about once a year)
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-water-data   # waits for any water-data update in progress, so saves never collide
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Download wetlands
+        run: python build_wetlands.py
+      - name: Save wetlands folder
+        run: |
+          mkdir -p /tmp/wetlands && cp -r wetlands/. /tmp/wetlands/
+          git fetch origin main
+          git reset --hard origin/main
+          rm -rf wetlands && mkdir -p wetlands && cp -r /tmp/wetlands/. wetlands/
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A wetlands
+          git diff --staged --quiet || git commit -m "Build wetlands"
+          git push origin HEAD:main
