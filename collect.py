@@ -278,6 +278,58 @@ def water_f(raw, label_says_celsius, where="", site=None):
     return None
 
 
+# ---------------- Summer (growing season) level: June-August average ----------------
+def summer_window():
+    """This summer so far (in Jun-Aug), this summer (Sep-Dec), or last summer (Jan-May)."""
+    y = LOCAL.year
+    if LOCAL.month in (6, 7, 8):
+        start = datetime(y, 6, 1, tzinfo=timezone.utc)
+        end = datetime(LOCAL.year, LOCAL.month, LOCAL.day, tzinfo=timezone.utc)  # through yesterday
+        return start, end, y, True
+    if LOCAL.month < 6:
+        y -= 1
+    return datetime(y, 6, 1, tzinfo=timezone.utc), datetime(y, 9, 1, tzinfo=timezone.utc), y, False
+
+
+def summer_key(year, partial):
+    return f"{year}-JJA" + (f"-to-{LOCAL:%Y%m%d}" if partial else "")
+
+
+def summer_from_points(pts, start, end, year, partial):
+    """Average of daily averages, so frequent and infrequent stations count the same."""
+    days = {}
+    for t, v in pts:
+        if start <= t < end:
+            days.setdefault(t.date(), []).append(v)
+    if len(days) < 7:
+        return None
+    daily = [sum(v) / len(v) for v in days.values()]
+    last = max(days)
+    return {"key": summer_key(year, partial), "avg": round(sum(daily) / len(daily), 2), "year": year,
+            "days": len(days), "partial": partial, "through": last.isoformat() if partial else None}
+
+
+def summer_level(site_id, fetch):
+    """Summer average, reused while still current: all season once summer is over, or for the
+    day while summer is under way. If this summer has under 7 days so far, use last summer."""
+    start, end, year, partial = summer_window()
+    key = summer_key(year, partial)
+    old = (PREV.get(site_id) or {}).get("summer")
+    if isinstance(old, dict) and old.get("key") == key:
+        return old
+    try:
+        got = summer_from_points(fetch(start, end), start, end, year, partial)
+        if got is None and partial:
+            ls, le = datetime(year - 1, 6, 1, tzinfo=timezone.utc), datetime(year - 1, 9, 1, tzinfo=timezone.utc)
+            got = summer_from_points(fetch(ls, le), ls, le, year - 1, False)
+        got = got or {"avg": None}
+        got["key"] = key
+        return got
+    except Exception as e:
+        errors.append(f"Summer level {site_id}: {e}")
+        return None
+
+
 # ---------------- USGS ----------------
 def collect_usgs():
     sites = {}
@@ -425,6 +477,24 @@ def collect_usgs():
     pending = sum(1 for x in sites.values() if (x.get("baseline") or {}).get("pending"))
     print(f"USGS monthly averages: {have} gauges have one; {raw_used} worked out from raw readings this run; "
           f"{pending} still waiting for a later run")
+
+    # Summer level: one request per gauge, then reused (for the season, or for the day during summer)
+    SUMMER_BUDGET, summer_used = 70, 0
+    for s in sites.values():
+        if s.get("height") is None:
+            continue
+        start, end, year, partial = summer_window()
+        old = (PREV.get(s["id"]) or {}).get("summer")
+        fresh_enough = isinstance(old, dict) and old.get("key") == summer_key(year, partial)
+        if not fresh_enough and summer_used >= SUMMER_BUDGET:
+            s["summer"] = {"avg": None, "pending": True}
+            continue
+        if not fresh_enough:
+            summer_used += 1
+            time.sleep(0.3)
+        s["summer"] = summer_level(s["id"], lambda st, en, sid=s["id"]: raw_month(sid, st, en))
+    print(f"Summer levels: {sum(1 for x in sites.values() if (x.get('summer') or {}).get('avg') is not None)} USGS gauges have one; "
+          f"{summer_used} worked out this run")
     return list(sites.values())
 
 
@@ -468,7 +538,7 @@ def corps_series(name, days=7, end=None):
     end = end or now
     params = {"name": name, "office": CORPS_OFFICE, "unit": "EN",
               "begin": (end - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ"),
-              "end": end.strftime("%Y-%m-%dT%H:%M:%SZ"), "page-size": 5000}
+              "end": end.strftime("%Y-%m-%dT%H:%M:%SZ"), "page-size": 12000}
     data = get(f"{CWMS}/timeseries?" + urllib.parse.urlencode(params), CORPS_JSON)
     pts = []
     for row in data.get("values") or []:
@@ -525,6 +595,7 @@ def collect_corps():
                     if b is None:
                         b = yearly_baseline(lambda st, en: corps_series(level, days=(en - st).days, end=en))
                     s["baseline"] = b
+                    s["summer"] = summer_level(s["id"], lambda st, en: corps_series(level, days=max(1, (en - st).days), end=en))
             except Exception as e:
                 errors.append(f"Army Corps {loc} level: {e}")
 
@@ -680,6 +751,7 @@ def collect_nhdes():
                     if b is None:
                         b = yearly_baseline(lambda st, en: des_values(ts_id, st, en))
                     s["baseline"] = b
+                    s["summer"] = summer_level(s["id"], lambda st, en: des_values(ts_id, st, en))
             except Exception as e:
                 errors.append(f"NHDES {code} level: {e}")
         if "temp" in best:

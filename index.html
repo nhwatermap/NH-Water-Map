@@ -51,6 +51,10 @@ main{position:relative;flex:1;min-height:0}
 .legend .row{display:flex;align-items:center;gap:.5rem;margin:.15rem 0}
 .legend .dot{width:12px;height:12px;border-radius:50%;flex:none;border:1px solid rgba(0,0,0,.25)}
 .legend p{margin:.4rem 0 0;color:var(--muted);font-size:.82rem}
+.info-btn{all:unset;display:inline-block;color:var(--accent);font-weight:600;font-size:.82rem;cursor:pointer;margin-top:.3rem}
+.info-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:3px}
+.info-text{display:block;margin-top:.35rem;color:var(--muted);font-size:.82rem;line-height:1.4}
+.info-text[hidden]{display:none}
 .legend .shapes{border-top:1px solid var(--line);margin-top:.5rem;padding-top:.45rem}
 /* Phones: credits shrink to a small 'Sources' button; tap to read them */
 @media (max-width:640px){
@@ -185,6 +189,7 @@ main{position:relative;flex:1;min-height:0}
   <div class="modes" role="group" aria-label="What to color the map by">
     <button data-mode="change" aria-pressed="true">24-hr change</button>
     <button data-mode="normal" aria-pressed="false" id="normalBtn">vs. month avg</button>
+    <button data-mode="summer" aria-pressed="false">vs. summer</button>
     <button data-mode="level" aria-pressed="false">Water level</button>
     <button data-mode="temp" aria-pressed="false">Water temp</button>
   </div>
@@ -255,8 +260,8 @@ function colorFor(s) {
     if (c < 0.5) return css('--rise1');
     return css('--rise2');
   }
-  if (mode === 'normal') {
-    const d = avgDiff(s);
+  if (mode === 'normal' || mode === 'summer') {
+    const d = mode === 'summer' ? summerDiff(s) : avgDiff(s);
     if (d == null) return null;
     if (d <= -1) return css('--n1');
     if (d <= -0.5) return css('--n2');
@@ -280,6 +285,7 @@ function tipText(s) {
   const head = esc(s.name) + '<br>';
   if (mode === 'change') return head + (s.change == null ? 'No 24-hr change available' : (s.change > 0 ? '+' : '') + fmt(s.change, 2) + ' ft in 24 hrs');
   if (mode === 'normal') return head + normalText(s);
+  if (mode === 'summer') return head + summerText(s);
   if (mode === 'temp') return head + fmt(s.temp) + ' °F water';
   return head + fmt(s.height, 2) + ' ft';
 }
@@ -287,9 +293,32 @@ function tipText(s) {
 const monthName = () => new Date(collectedAt).toLocaleDateString(undefined, { month: 'long' });
 const monthShort = () => new Date(collectedAt).toLocaleDateString(undefined, { month: 'short' });
 // Difference from this month's 10-year average, in feet (null when unknown)
+function summerDiff(s) {
+  const su = s.summer;
+  return (su && su.avg != null && s.height != null) ? Math.round((s.height - su.avg) * 100) / 100 : null;
+}
+function summerLabel(su) {
+  if (!su || su.avg == null) return '';
+  if (su.partial && su.through) { const [y, m, d] = su.through.split('-').map(Number); return `Summer ${su.year} so far (Jun 1–${new Date(y, m - 1, d).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })})`; }
+  return `Summer ${su.year} (Jun–Aug)`;
+}
+function summerText(s) {
+  const d = summerDiff(s);
+  if (d == null) return (s.summer && s.summer.pending) ? 'Summer level still being calculated' : 'No summer level for this station';
+  if (Math.abs(d) < 0.05) return 'Right at this summer’s level';
+  return feetText(d) + (d > 0 ? ' above' : ' below') + ' this summer’s level';
+}
+function summerNote(d) {
+  if (d >= 1) return 'Water is well above this summer’s level. Vegetation that grew at summer levels may now be under deeper water.';
+  if (d >= 0.5) return 'Water is somewhat above this summer’s level. Some shallow vegetation may now be under water.';
+  if (d > -0.5) return 'Water is near this summer’s level. Shallow vegetation may still be close to the surface.';
+  if (d > -1) return 'Water is somewhat below this summer’s level. Some vegetated shallows may be getting thin or exposed.';
+  return 'Water is well below this summer’s level. Some vegetated shallows may be exposed or dry.';
+}
+const SUMMER_INFO = 'Aquatic plants grow mostly in June, July and August, at that summer’s water levels. If the water has come up a foot or more since then, much of that growth may now be under deeper water; if it’s near or below summer levels, shallow vegetation may still be within reach. This compares water levels only. It can’t see actual plant conditions, so treat it as a clue for what to check, not a forecast.';
 function avgDiff(s) {
   const b = s.baseline;
-  return (b && b.avg != null && s.height != null) ? s.height - b.avg : null;
+  return (b && b.avg != null && s.height != null) ? Math.round((s.height - b.avg) * 100) / 100 : null;
 }
 function feetText(d) {
   const a = Math.abs(d);
@@ -330,18 +359,20 @@ function drawLegend() {
   const rows = {
     change: [['--fall2', 'Falling fast (½ ft or more)'], ['--fall1', 'Falling'], ['--steady', 'Steady (within 0.1 ft)'], ['--rise1', 'Rising'], ['--rise2', 'Rising fast (½ ft or more)']],
     normal: [['--n5', '1 ft or more above'], ['--n4', '6 in to 1 ft above'], ['--n3', 'Within 6 in of average'], ['--n2', '6 in to 1 ft below'], ['--n1', '1 ft or more below']],
+    summer: [['--n5', '1 ft or more above summer'], ['--n4', '6 in to 1 ft above'], ['--n3', 'Within 6 in of summer level'], ['--n2', '6 in to 1 ft below'], ['--n1', '1 ft or more below summer']],
     temp: [['--t1', 'Below 40 °F'], ['--t2', '40–50 °F'], ['--t3', '50–60 °F'], ['--t4', '60–70 °F'], ['--t5', '70 °F and up']],
     level: [['--lvl', 'Reporting water level']]
   }[mode];
-  const title = { normal: `Compared to the ${monthName()} average`, change: 'Water level change, last 24 hrs', temp: 'Water temperature', level: 'Water level' }[mode];
+  const title = { summer: 'Compared to this summer’s level', normal: `Compared to the ${monthName()} average`, change: 'Water level change, last 24 hrs', temp: 'Water temperature', level: 'Water level' }[mode];
   const note = {
     change: 'Steady means it moved less than about an inch either way.',
     normal: `Average water level for ${monthName()} over the past 10 years. Tap a station for the exact numbers.`,
+    summer: `Summer = the average water level for June through August. <button class="info-btn" aria-expanded="false" data-info>ⓘ What’s this for?</button><span class="info-text" hidden>${SUMMER_INFO}</span>`,
     temp: 'Only some stations measure water temperature.',
     level: 'Each station has its own zero point, so compare a spot to itself over time. Tap one for its 7-day chart.'
   }[mode];
   const lg = document.getElementById('legend');
-  lg.innerHTML = `<button class="legend-toggle" aria-expanded="${!lg.classList.contains('collapsed')}" aria-controls="legendBody"><span class="lt-full">${title}</span><span class="lt-short">Legend: ${{ change: '24-hr change', normal: 'vs. ' + monthShort() + ' avg', level: 'water level', temp: 'water temp' }[mode]}</span><span class="lt-arrow" aria-hidden="true"></span></button><div class="legend-body" id="legendBody">` +
+  lg.innerHTML = `<button class="legend-toggle" aria-expanded="${!lg.classList.contains('collapsed')}" aria-controls="legendBody"><span class="lt-full">${title}</span><span class="lt-short">Legend: ${{ change: '24-hr change', summer: 'vs. summer', normal: 'vs. ' + monthShort() + ' avg', level: 'water level', temp: 'water temp' }[mode]}</span><span class="lt-arrow" aria-hidden="true"></span></button><div class="legend-body" id="legendBody">` +
     rows.map(([v, l]) => `<div class="row"><span class="dot" style="background:${css(v)}"></span>${l}</div>`).join('') + `<p>${note}</p>` +
     `<div class="shapes">
       <div class="row"><span class="shape" style="border-radius:50%"></span>Lake, pond or reservoir</div>
@@ -418,6 +449,9 @@ function openDetail(s) {
       <div class="stat"><span>24-hr change</span><b>${s.change == null ? '—' : (s.change > 0 ? '+' : '') + fmt(s.change, 2) + ' ft'}</b></div>
       <div class="stat"><span>Water temp${s.tempNote ? ' (corrected)' : ''}</span><b>${s.temp == null ? 'Not measured' : fmt(s.temp) + ' °F'}</b>${s.tempNote ? `<small>${esc(s.tempNote)}</small>` : ''}</div>
       <div class="stat"><span>${esc(s.flowLabel || 'Flow')}</span><b>${s.flow == null ? '—' : Math.round(s.flow).toLocaleString() + ' cfs'}</b></div>
+      ${summerDiff(s) != null ? `<div class="stat"><span>${esc(summerLabel(s.summer))}</span><b>${fmt(s.summer.avg, 2)} ft</b><small>average level</small></div>
+      <div class="stat"><span>Now vs. summer</span><b>${Math.abs(summerDiff(s)) < 0.05 ? 'Even' : (summerDiff(s) > 0 ? '+' : '−') + feetText(summerDiff(s))}</b><small>${summerDiff(s) > 0.05 ? 'higher' : summerDiff(s) < -0.05 ? 'lower' : 'same'} than summer</small></div>
+      <div class="stat wide"><span>Aquatic vegetation clue</span><small style="color:var(--ink);font-size:.9rem;margin-top:.2rem">${summerNote(summerDiff(s))}</small><button class="info-btn" aria-expanded="false" data-info>ⓘ What’s this for?</button><small class="info-text" hidden>${SUMMER_INFO}</small></div>` : ''}
     </div>
     <div class="chart-title">${esc(levelLabel)}, last 7 days</div>
     <div class="chart-wrap">${chartSVG(s.series)}</div>
@@ -515,7 +549,7 @@ const WetlandLayer = L.TileLayer.extend({
 });
 const wetlands = new WetlandLayer('', { tileSize: 256, minZoom: WET_MIN_ZOOM, maxZoom: 18, opacity: 1,
   attribution: 'Wetlands: U.S. Fish &amp; Wildlife Service NWI' });
-map.attributionControl.addAttribution('Page v21 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
+map.attributionControl.addAttribution('Page v22 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
 // A slow or failed square is retried up to twice (after 2 s, then 5 s). We never switch to the
 // server's standard green colors; a square that still fails just stays blank.
 wetlands.on('tileerror', e => {
@@ -1009,6 +1043,19 @@ document.getElementById('restoreFile').addEventListener('change', async e => {
     if (list.length) showImport(list, 'a shared link');
   } catch (e) { alert('That shared link looks incomplete or damaged. Ask for it to be sent again.'); }
 })();
+
+
+// ⓘ info buttons (legend and details): show or hide the explanation next to them
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-info]');
+  if (!b) return;
+  const t = b.nextElementSibling;
+  if (!t) return;
+  const open = t.hidden;
+  t.hidden = !open;
+  b.setAttribute('aria-expanded', open);
+  b.textContent = open ? 'ⓘ Hide explanation' : 'ⓘ What’s this for?';
+});
 
 function updateWetNote() {
   document.getElementById('wetZoomNote').style.display = map.getZoom() < WET_MIN_ZOOM ? '' : 'none';
