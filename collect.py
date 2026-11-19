@@ -253,6 +253,31 @@ def yearly_baseline(fetch):
     return baseline_from_points(pts)
 
 
+def water_f(raw, label_says_celsius, where="", site=None):
+    """Water temperature in °F, with a sanity check: NH water is always roughly 30-90 °F.
+    If the station's label gives an impossible number, try the two common mistakes: a Celsius
+    reading labeled Fahrenheit (or the reverse), and a reading converted to Fahrenheit twice.
+    If one of those is believable, use it and say so; otherwise drop the reading."""
+    try:
+        raw = float(raw)
+    except (TypeError, ValueError):
+        return None
+    ok = lambda f: 30 <= f <= 90
+    as_label = raw * 9 / 5 + 32 if label_says_celsius else raw
+    if ok(as_label):
+        return round(as_label, 1)
+    fixes = [raw * 9 / 5 + 32, raw, (raw - 32) * 5 / 9, (as_label - 32) * 5 / 9]
+    for f in fixes:
+        if ok(f):
+            print(f"Note: {where} temperature posted as {round(as_label, 1)} °F looks like a unit error; using {round(f, 1)} °F")
+            if site is not None:
+                site["tempNote"] = (f"The agency posted {round(as_label, 1)} °F, which isn't possible here. It looks like a "
+                                    f"unit mix-up in their system, so the corrected value is shown.")
+            return round(f, 1)
+    print(f"Note: {where} temperature {raw} doesn't make sense in any unit; left off the map")
+    return None
+
+
 # ---------------- USGS ----------------
 def collect_usgs():
     sites = {}
@@ -276,8 +301,10 @@ def collect_usgs():
             t = p.get("time")
             if s.get(key + "Time") and s[key + "Time"] > t:
                 continue
-            if key == "temp" and "c" in (p.get("unit_of_measure") or "degC").lower():
-                val = val * 9 / 5 + 32
+            if key == "temp":
+                val = water_f(val, "c" in (p.get("unit_of_measure") or "degC").lower(), f"USGS {sid}", s)
+                if val is None:
+                    continue
             s[key] = round(val, 2)
             s[key + "Time"] = t
 
@@ -519,7 +546,10 @@ def collect_corps():
                 pts = corps_series(temp, days=2)
                 if pts:
                     pts.sort()
-                    s["temp"] = round(pts[-1][1], 1)
+                    v = water_f(pts[-1][1], False, f"Army Corps {loc}", s)  # asked for English units
+                    if v is None:
+                        raise ValueError("implausible water temperature")
+                    s["temp"] = v
                     s["tempTime"] = pts[-1][0].isoformat()
             except Exception:
                 pass
@@ -657,12 +687,13 @@ def collect_nhdes():
             try:
                 pts = des_values(ts_id, now - timedelta(days=2), now)
                 if pts:
-                    v = pts[-1][1]
-                    unit = ((param.get("unit") or {}).get("code") or "").upper()
-                    if unit in ("C", "DEGC", "DEG C", "CEL", "CELSIUS") or (not unit.startswith("F") and v < 40 and "F" not in unit):
-                        v = v * 9 / 5 + 32
-                    s["temp"] = round(v, 1)
-                    s["tempTime"] = pts[-1][0].isoformat()
+                    u = param.get("unit")
+                    unit = str((u.get("code") or u.get("name") or "") if isinstance(u, dict) else (u or "")).upper()
+                    says_c = unit in ("C", "DEGC", "DEG C", "CEL", "CELSIUS") or ("C" in unit and "F" not in unit)
+                    v = water_f(pts[-1][1], says_c, f"NHDES {pr.get('name') or code}", s)
+                    if v is not None:
+                        s["temp"] = v
+                        s["tempTime"] = pts[-1][0].isoformat()
             except Exception as e:
                 errors.append(f"NHDES {code} temp: {e}")
         if "flow" in best:

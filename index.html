@@ -338,7 +338,7 @@ function openDetail(s) {
       <div class="stat"><span>${monthShort()} average (10 yrs)</span><b>${s.baseline && s.baseline.avg != null ? fmt(s.baseline.avg, 2) + ' ft' : (s.baseline && s.baseline.pending ? 'Calculating' : '—')}</b>${s.baseline && s.baseline.years ? `<small>${s.baseline.years} years of records</small>` : s.baseline && s.baseline.pending ? '<small>Ready after the next update or two</small>' : ''}</div>
       <div class="stat"><span>Now vs. ${monthShort()} average</span><b>${avgDiff(s) == null ? '—' : (Math.abs(avgDiff(s)) < 0.05 ? 'Even' : (avgDiff(s) > 0 ? '+' : '−') + feetText(avgDiff(s)))}</b>${avgDiff(s) == null ? '' : `<small>${avgDiff(s) > 0.05 ? 'higher' : avgDiff(s) < -0.05 ? 'lower' : 'same'} than usual</small>`}</div>
       <div class="stat"><span>24-hr change</span><b>${s.change == null ? '—' : (s.change > 0 ? '+' : '') + fmt(s.change, 2) + ' ft'}</b></div>
-      <div class="stat"><span>Water temp</span><b>${s.temp == null ? 'Not measured' : fmt(s.temp) + ' °F'}</b></div>
+      <div class="stat"><span>Water temp${s.tempNote ? ' (corrected)' : ''}</span><b>${s.temp == null ? 'Not measured' : fmt(s.temp) + ' °F'}</b>${s.tempNote ? `<small>${esc(s.tempNote)}</small>` : ''}</div>
       <div class="stat"><span>${esc(s.flowLabel || 'Flow')}</span><b>${s.flow == null ? '—' : Math.round(s.flow).toLocaleString() + ' cfs'}</b></div>
     </div>
     <div class="chart-title">${esc(levelLabel)}, last 7 days</div>
@@ -437,7 +437,7 @@ const WetlandLayer = L.TileLayer.extend({
 });
 const wetlands = new WetlandLayer('', { tileSize: 256, minZoom: WET_MIN_ZOOM, maxZoom: 18, opacity: 1,
   attribution: 'Wetlands: U.S. Fish &amp; Wildlife Service NWI' });
-map.attributionControl.addAttribution('Page v14 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
+map.attributionControl.addAttribution('Page v15 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
 // A slow or failed square is retried up to twice (after 2 s, then 5 s). We never switch to the
 // server's standard green colors; a square that still fails just stays blank.
 wetlands.on('tileerror', e => {
