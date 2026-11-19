@@ -91,6 +91,14 @@ main{position:relative;flex:1;min-height:0}
 .busy.dots::after{content:'';display:inline-block;width:1.2em;text-align:left;animation:busydots 1.2s steps(4,end) infinite}
 @keyframes busydots{0%{content:''}25%{content:'.'}50%{content:'..'}75%{content:'...'}}
 @media (prefers-reduced-motion: reduce){.busy.dots::after{animation:none;content:'…'}}
+.busy{display:none;align-items:center;gap:.5rem}
+.busy.show{display:flex}
+.duck-fly{width:36px;height:22px;flex:none;color:var(--accent);animation:duckbob .5s ease-in-out infinite alternate}
+.duck-fly .wing{transform-box:view-box;transform-origin:0 11.4px;animation:duckflap .25s ease-in-out infinite alternate}
+@keyframes duckflap{from{transform:scaleY(1)}to{transform:scaleY(-.75)}}
+@keyframes duckbob{from{transform:translateY(-1px)}to{transform:translateY(1px)}}
+@media (prefers-reduced-motion: reduce){.duck-fly,.duck-fly .wing{animation:none}}
+
 
 .map-style{border:0;margin:0 0 .3rem;padding:.2rem 0 .5rem;display:flex;flex-wrap:wrap;gap:.3rem .8rem}
 .map-style legend{font-weight:600;padding:0;margin-bottom:.3rem;font-size:.85rem;color:var(--muted)}
@@ -620,7 +628,7 @@ const WetlandLayer = L.TileLayer.extend({
 });
 const wetlands = new WetlandLayer('', { tileSize: 256, minZoom: WET_MIN_ZOOM, maxZoom: 18, opacity: 1,
   attribution: 'Wetlands: U.S. Fish &amp; Wildlife Service NWI' });
-map.attributionControl.addAttribution('Page v26 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
+map.attributionControl.addAttribution('Page v27 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
 // A slow or failed square is retried up to twice (after 2 s, then 5 s). We never switch to the
 // server's standard green colors; a square that still fails just stays blank.
 wetlands.on('tileerror', e => {
@@ -1138,12 +1146,13 @@ document.querySelectorAll('input[name=basemap]').forEach(r => {
 
 
 // ---------- "Loading…" pill for slow layers ----------
+const DUCK_SVG = '<svg class="duck-fly" viewBox="0 0 36 22" fill="currentColor" aria-hidden="true"><path d="M7.6 11.2 3.2 11.4 2.4 12.3 3.4 13.2 7.6 13.6Z"/><ellipse cx="14.5" cy="12.4" rx="8.2" ry="3.1"/><path d="M20.5 10.6 27.4 8.4 28.1 10.4 21.4 13.4Z"/><ellipse cx="28.6" cy="8.9" rx="2.7" ry="2.2"/><path d="M30.6 8.1H34.2Q35.3 8.9 34.2 9.9H30.6Z"/><path class="wing" d="M12.6 11.4 8.4 1.2Q10.4 1.4 11.8 2.4L18.6 11.2Z"/><circle cx="29.3" cy="8.3" r=".55" fill="var(--panel)"/></svg>';
 const busyJobs = new Map();
 let busyHint = null, busyHintTimer = null;
 function renderBusy() {
   const el = document.getElementById('busy');
   const first = busyJobs.size ? [...busyJobs.values()][0] : null;
-  if (first) { el.textContent = first; el.className = 'busy show dots'; }
+  if (first) { el.innerHTML = DUCK_SVG + '<span>' + esc(first) + '</span>'; el.className = 'busy show dots'; }
   else if (busyHint) { el.textContent = busyHint; el.className = 'busy show'; }
   else el.className = 'busy';
 }
