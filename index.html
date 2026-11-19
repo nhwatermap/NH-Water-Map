@@ -52,6 +52,14 @@ main{position:relative;flex:1;min-height:0}
 .legend .dot{width:12px;height:12px;border-radius:50%;flex:none;border:1px solid rgba(0,0,0,.25)}
 .legend p{margin:.4rem 0 0;color:var(--muted);font-size:.82rem}
 .legend .shapes{border-top:1px solid var(--line);margin-top:.5rem;padding-top:.45rem}
+/* Phones: credits shrink to a small 'Sources' button; tap to read them */
+@media (max-width:640px){
+  .leaflet-control-attribution.compact{font-size:0;line-height:0;padding:0;background:transparent;box-shadow:none}
+  .leaflet-control-attribution.compact::before{content:'ⓘ Sources';display:inline-block;font-size:12px;line-height:1;padding:.4rem .6rem;border-radius:6px;background:var(--panel);color:var(--ink);border:1px solid var(--line);cursor:pointer}
+  .leaflet-control-attribution:not(.compact){max-width:calc(100vw - 1rem);white-space:normal;font-size:11px;line-height:1.35;padding:.4rem .5rem;cursor:pointer}
+  .leaflet-control-attribution:not(.compact)::after{content:'  ✕';font-weight:700}
+}
+
 .legend-toggle{all:unset;display:flex;align-items:center;justify-content:space-between;gap:.6rem;width:100%;font-weight:700;cursor:pointer;margin-bottom:.35rem}
 .legend-toggle:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:3px}
 .legend-toggle .lt-arrow::after{content:'▾';color:var(--muted)}
@@ -485,7 +493,7 @@ const WetlandLayer = L.TileLayer.extend({
 });
 const wetlands = new WetlandLayer('', { tileSize: 256, minZoom: WET_MIN_ZOOM, maxZoom: 18, opacity: 1,
   attribution: 'Wetlands: U.S. Fish &amp; Wildlife Service NWI' });
-map.attributionControl.addAttribution('Page v18 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
+map.attributionControl.addAttribution('Page v19 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
 // A slow or failed square is retried up to twice (after 2 s, then 5 s). We never switch to the
 // server's standard green colors; a square that still fails just stays blank.
 wetlands.on('tileerror', e => {
@@ -765,6 +773,21 @@ drawMine();
     lg.classList.toggle('collapsed', now);
     btn.setAttribute('aria-expanded', !now);
     try { localStorage.setItem('legend-collapsed', now ? '1' : '0'); } catch (e) { }
+  });
+})();
+
+
+// Phones: keep the credits compact until tapped
+(function () {
+  const attr = document.querySelector('.leaflet-control-attribution');
+  if (!attr) return;
+  attr.classList.add('compact');
+  attr.setAttribute('role', 'button');
+  attr.setAttribute('aria-label', 'Map and data sources');
+  attr.addEventListener('click', e => {
+    if (!window.matchMedia('(max-width: 640px)').matches) return;
+    if (attr.classList.contains('compact')) { e.preventDefault(); attr.classList.remove('compact'); }
+    else if (!e.target.closest('a')) attr.classList.add('compact');
   });
 })();
 
