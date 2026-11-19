@@ -628,14 +628,15 @@ const WetlandLayer = L.TileLayer.extend({
 });
 const wetlands = new WetlandLayer('', { tileSize: 256, minZoom: WET_MIN_ZOOM, maxZoom: 18, opacity: 1,
   attribution: 'Wetlands: U.S. Fish &amp; Wildlife Service NWI' });
-map.attributionControl.addAttribution('Page v27 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
+map.attributionControl.addAttribution('Page v28 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
 // A slow or failed square is retried up to twice (after 2 s, then 5 s). We never switch to the
 // server's standard green colors; a square that still fails just stays blank.
 wetlands.on('tileerror', e => {
   const img = e.tile, n = +(img.dataset.tries || 0);
-  if (n >= 2) return;
+  if (n >= 2) { img.dataset.retrying = ''; return; }
   img.dataset.tries = n + 1;
-  setTimeout(() => { img.src = wetlands.getTileUrl(e.coords) + '&try=' + (n + 1); }, n ? 5000 : 2000);
+  img.dataset.retrying = '1';  // the loading pill keeps counting this square
+  setTimeout(() => { img.dataset.retrying = ''; img.src = wetlands.getTileUrl(e.coords) + '&try=' + (n + 1); }, n ? 5000 : 2000);
 });
 const overlayLayers = { wetlands };
 
@@ -1170,9 +1171,14 @@ function flashHint(text) {
   busyHintTimer = setTimeout(() => { busyHint = null; renderBusy(); }, 5000);
 }
 function watchLoading(layer, key, text) {
-  layer.on('loading', () => setBusy(key, text));
-  layer.on('load', () => setBusy(key, null));
-  layer.on('remove', () => setBusy(key, null));
+  // Count map squares still on the way (including ones waiting to retry); hide only at zero
+  const pending = new Set(), id = c => c.z + '/' + c.x + '/' + c.y;
+  const update = () => setBusy(key, pending.size ? text : null);
+  layer.on('tileloadstart', e => { pending.add(id(e.coords)); update(); });
+  layer.on('tileload', e => { pending.delete(id(e.coords)); update(); });
+  layer.on('tileerror', e => { if (!(e.tile && e.tile.dataset.retrying === '1')) pending.delete(id(e.coords)); update(); });
+  layer.on('tileunload', e => { pending.delete(id(e.coords)); update(); });
+  layer.on('remove', () => { pending.clear(); update(); });
 }
 watchLoading(wetlands, 'wet', 'Loading wetland shading');
 watchLoading(BASEMAPS.usgsTopo, 'base', 'Loading map');
