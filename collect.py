@@ -846,6 +846,126 @@ def collect_tides():
     return {"updated": now.isoformat(), "stations": stations, "temps": temps}
 
 
+# ---------------- Seacoast water temperature: Great Bay Reserve (NERACOOS) and buoys (NDBC) ----------------
+ERDDAPS = ["https://www.neracoos.org/erddap", "https://data.neracoos.org/erddap"]
+BUOY_BOX = (42.60, -71.10, 43.40, -70.00)  # NH coast out to Jeffreys Ledge
+
+
+def c_to_f(v, units):
+    u = (units or "").lower()
+    return v * 9 / 5 + 32 if ("c" in u and "f" not in u) or "celsius" in u or u in ("degree_c", "degc") else v
+
+
+def erddap_rows(base, dataset, columns, since):
+    url = f"{base}/tabledap/{dataset}.json?" + ",".join(columns) + "&time>=" + since
+    data = get(url.replace(" ", "%20"))
+    t = data.get("table", {})
+    names, units = t.get("columnNames", []), t.get("columnUnits", [])
+    return [dict(zip(names, r)) for r in t.get("rows", [])], dict(zip(names, units))
+
+
+def collect_great_bay(existing):
+    out = []
+    since = (now - timedelta(days=3)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    for base in ERDDAPS:
+        try:
+            found = get(f"{base}/search/index.json?" + urllib.parse.urlencode(
+                {"searchFor": "Great Bay NERRS water quality", "page": 1, "itemsPerPage": 100}))
+        except Exception as e:
+            errors.append(f"Great Bay search at {base}: {e}")
+            continue
+        t = found.get("table", {})
+        cols = t.get("columnNames", [])
+        rows = [dict(zip(cols, r)) for r in t.get("rows", [])]
+        ids = [r.get("Dataset ID") for r in rows if r.get("Dataset ID") and "GRB" in r["Dataset ID"].upper()
+               and "WQ" in r["Dataset ID"].upper()]
+        print(f"Great Bay Reserve: {len(ids)} water monitors listed at {base}")
+        for ds in ids:
+            title = next((r.get("Title") for r in rows if r.get("Dataset ID") == ds), ds)
+            time.sleep(0.3)
+            try:
+                rws, units = erddap_rows(base, ds, ["time", "latitude", "longitude", "sea_water_temperature", "sea_water_salinity"], since)
+            except Exception:
+                try:
+                    rws, units = erddap_rows(base, ds, ["time", "latitude", "longitude", "sea_water_temperature"], since)
+                except Exception as e:
+                    errors.append(f"Great Bay {ds}: {e}")
+                    continue
+            rws = [r for r in rws if r.get("sea_water_temperature") is not None]
+            if not rws:
+                continue  # monitor out for the season or not reporting
+            last = max(rws, key=lambda r: r["time"])
+            name = str(title).replace("Great Bay,NH.", "").replace("Great Bay, NH.", "").replace("WQ station", "").strip() or ds
+            s = {"id": f"GRB-{ds}", "source": "Great Bay Reserve", "lat": float(last["latitude"]), "lon": float(last["longitude"]),
+                 "name": f"Great Bay Reserve – {name}", "waterType": "tidal",
+                 "temp": round(c_to_f(float(last["sea_water_temperature"]), units.get("sea_water_temperature")), 1),
+                 "tempTime": last["time"]}
+            if last.get("sea_water_salinity") is not None:
+                s["salinity"] = round(float(last["sea_water_salinity"]), 1)
+            out.append(s)
+        if ids:
+            break  # found the catalog; no need to try the other address
+    return out
+
+
+def collect_buoys(existing):
+    out = []
+    try:
+        req = urllib.request.Request("https://www.ndbc.noaa.gov/activestations.xml", headers={"User-Agent": "nh-water-map"})
+        with urllib.request.urlopen(req, timeout=60) as r:
+            xml = r.read().decode("utf-8", "replace")
+    except Exception as e:
+        errors.append(f"NDBC station list: {e}")
+        return out
+    import re as _re
+    stations = []
+    for m in _re.finditer(r"<station\s([^>]*)/?>", xml):
+        a = dict(_re.findall(r'(\w+)="([^"]*)"', m.group(1)))
+        try:
+            lat, lon = float(a["lat"]), float(a["lon"])
+        except Exception:
+            continue
+        if BUOY_BOX[0] <= lat <= BUOY_BOX[2] and BUOY_BOX[1] <= lon <= BUOY_BOX[3] and a.get("met", "n") == "y":
+            stations.append((a["id"].upper(), a.get("name", a["id"]), lat, lon))
+    print(f"Buoys: {len(stations)} NDBC stations off the NH coast")
+    for sid, name, lat, lon in stations:
+        # Skip stations that duplicate one we already have (NDBC also republishes NOAA tide stations)
+        if any(abs(e["lat"] - lat) < 0.01 and abs(e["lon"] - lon) < 0.01 for e in existing):
+            continue
+        time.sleep(0.3)
+        try:
+            req = urllib.request.Request(f"https://www.ndbc.noaa.gov/data/realtime2/{sid}.txt", headers={"User-Agent": "nh-water-map"})
+            with urllib.request.urlopen(req, timeout=60) as r:
+                lines = r.read().decode("utf-8", "replace").splitlines()
+        except Exception:
+            continue
+        if len(lines) < 3:
+            continue
+        head = lines[0].lstrip("#").split()
+        rec = None
+        for line in lines[2:30]:  # newest first; take the first row with a water temperature
+            vals = dict(zip(head, line.split()))
+            if vals.get("WTMP", "MM") != "MM":
+                rec = vals
+                break
+        if not rec:
+            continue
+        try:
+            t = datetime(int(rec["YY"]), int(rec["MM"]), int(rec["DD"]), int(rec["hh"]), int(rec["mm"]), tzinfo=timezone.utc)
+        except Exception:
+            continue
+        s = {"id": f"NDBC-{sid}", "source": "NOAA buoy", "lat": lat, "lon": lon, "name": name.split(" - ")[-1].strip() or sid,
+             "waterType": "tidal", "temp": round(float(rec["WTMP"]) * 9 / 5 + 32, 1), "tempTime": t.isoformat(), "ndbcId": sid}
+        if rec.get("WVHT", "MM") != "MM":
+            s["waves"] = round(float(rec["WVHT"]) * 3.28084, 1)  # metres to feet
+        if rec.get("WSPD", "MM") != "MM":
+            mph = lambda ms: round(float(ms) * 2.23694)
+            s["wind"] = {"speed": mph(rec["WSPD"]), "gust": mph(rec["GST"]) if rec.get("GST", "MM") != "MM" else 0,
+                         "deg": float(rec["WDIR"]) if rec.get("WDIR", "MM") != "MM" else None}
+        out.append(s)
+    return out
+
+
 if __name__ == "__main__":
     import traceback
 
@@ -868,7 +988,11 @@ if __name__ == "__main__":
     tides = safe("Tides", collect_tides)
     if not isinstance(tides, dict):
         tides = None
-    all_sites = sites + corps + des + ((tides or {}).get("temps") or [])
+    coast_temps = (tides or {}).get("temps") or []
+    grb = safe("Great Bay Reserve", lambda: collect_great_bay(coast_temps))
+    buoys = safe("Buoys", lambda: collect_buoys(coast_temps + grb))
+    print(f"Seacoast water temps: {len(coast_temps)} NOAA tide stations, {len(grb)} Great Bay monitors, {len(buoys)} buoys")
+    all_sites = sites + corps + des + coast_temps + grb + buoys
     if not all_sites:
         print("Nothing collected this time; keeping the previous data.json.")
     else:

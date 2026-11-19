@@ -293,7 +293,37 @@ function chartSVG(series) {
     <text x="${W - 6}" y="${H - 6}" font-size="10" fill="${ink}" text-anchor="end">${day(x1)}</text></svg>`;
 }
 
+// Seacoast temperature stations (NOAA tide stations, Great Bay monitors, buoys)
+function openCoastTemp(s) {
+  if (s.source === 'NOAA') {
+    const st = tideStations.find(t => 'NOAA-' + t.id === s.id);
+    if (st) return openTide(st);
+  }
+  const stat = (label, val, sub) => `<div class="stat"><span>${label}</span><b>${val}</b>${sub ? `<small>${sub}</small>` : ''}</div>`;
+  let stats = stat('Water temp', s.temp == null ? '—' : fmt(s.temp) + ' °F', s.tempTime ? when(s.tempTime) : '');
+  if (s.salinity != null) {
+    const sal = s.salinity, word = sal >= 30 ? 'near ocean strength' : sal >= 18 ? 'salty, mixed with fresh' : sal >= 5 ? 'brackish' : 'mostly fresh';
+    stats += stat('Salinity', fmt(sal) + ' ppt', word + ' (ocean is about 35)');
+  }
+  if (s.waves != null) stats += stat('Wave height', fmt(s.waves) + ' ft', 'significant height');
+  if (s.wind && s.wind.speed != null) {
+    const dir = s.wind.deg != null ? COMPASS[Math.round(s.wind.deg / 22.5) % 16] + ' ' : '';
+    stats += stat('Wind', dir + s.wind.speed + ' mph', s.wind.gust ? 'gusts ' + s.wind.gust + ' mph' : '');
+  }
+  const link = s.source === 'Great Bay Reserve'
+    ? `http://cdmo.baruch.sc.edu/get/realTime.cfm?stationCode=${encodeURIComponent(s.id.replace('GRB-', '').split('_')[0])}`
+    : `https://www.ndbc.noaa.gov/station_page.php?station=${encodeURIComponent((s.ndbcId || '').toLowerCase())}`;
+  document.getElementById('detailBody').innerHTML = `<span class="badge">${esc(s.source)}</span>
+    <h2>${esc(s.name)}</h2>
+    <p class="sub">Last reading ${when(s.tempTime)}</p>
+    <div class="stats">${stats}</div>
+    ${s.source === 'Great Bay Reserve' ? '<p class="layer-note">Great Bay monitors are usually in the water April through December and pulled for winter.</p>' : ''}
+    <p><a href="${link}" target="_blank" rel="noopener">Open this station on the ${s.source === 'Great Bay Reserve' ? 'Great Bay Reserve data' : 'NOAA buoy'} site</a></p>`;
+  document.getElementById('detail').classList.add('show');
+}
+
 function openDetail(s) {
+  if (s.waterType === 'tidal' && s.height == null && s.temp != null) return openCoastTemp(s);
   const link = s.source === 'Army Corps'
     ? `https://water.usace.army.mil/overview/nae/locations/${encodeURIComponent(s.corpsId)}`
     : s.source === 'NHDES' ? 'https://nhdes.rtiamanzi.org/stations'
@@ -407,7 +437,7 @@ const WetlandLayer = L.TileLayer.extend({
 });
 const wetlands = new WetlandLayer('', { tileSize: 256, minZoom: WET_MIN_ZOOM, maxZoom: 18, opacity: 1,
   attribution: 'Wetlands: U.S. Fish &amp; Wildlife Service NWI' });
-map.attributionControl.addAttribution('Page v13 | Tides: NOAA');
+map.attributionControl.addAttribution('Page v14 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
 // A slow or failed square is retried up to twice (after 2 s, then 5 s). We never switch to the
 // server's standard green colors; a square that still fails just stays blank.
 wetlands.on('tileerror', e => {
