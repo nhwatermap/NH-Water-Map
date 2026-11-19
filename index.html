@@ -62,6 +62,31 @@ main{position:relative;flex:1;min-height:0}
 .layer-row b{display:block;font-weight:600}
 .layer-row small{display:block;color:var(--muted);font-size:.8rem;line-height:1.3}
 .layer-note{color:var(--muted);font-size:.75rem;margin:.35rem 0 0;line-height:1.3}
+/* ---------- My markers ---------- */
+.add-btn{position:absolute;right:.75rem;bottom:1.5rem;z-index:560;font:inherit;font-weight:600;background:var(--accent);color:var(--panel);border:0;border-radius:999px;padding:.6rem 1rem;box-shadow:0 2px 6px rgba(0,0,0,.35);cursor:pointer}
+.add-btn:focus-visible,.place-bar button:focus-visible,.mk-actions button:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.crosshair{position:absolute;left:50%;top:50%;width:44px;height:44px;margin:-22px 0 0 -22px;z-index:600;pointer-events:none;display:none}
+.placing .crosshair{display:block}
+.placing .add-btn{display:none}
+.placing .leaflet-marker-pane,.placing .leaflet-overlay-pane svg,.placing .leaflet-overlay-pane path{pointer-events:none!important}
+.place-bar{position:absolute;left:50%;transform:translateX(-50%);top:.75rem;z-index:620;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:.6rem .8rem;display:none;gap:.6rem;align-items:center;flex-wrap:wrap;justify-content:center;max-width:calc(100% - 1.5rem);box-shadow:0 2px 8px rgba(0,0,0,.3)}
+.placing .place-bar{display:flex}
+.place-bar p{margin:0;font-size:.9rem;flex-basis:100%;text-align:center}
+.place-bar button,.mk-actions button,.mk-form button{font:inherit;font-weight:600;border-radius:8px;padding:.45rem .9rem;cursor:pointer;border:1px solid var(--line);background:transparent;color:var(--ink)}
+.place-bar .primary,.mk-actions .primary,.mk-form .primary{background:var(--accent);color:var(--panel);border-color:var(--accent)}
+.mk-form label{display:block;font-weight:600;font-size:.9rem;margin:.8rem 0 .3rem}
+.mk-form input[type=text],.mk-form select,.mk-form textarea{width:100%;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:.5rem .6rem}
+.mk-form textarea{min-height:5rem;resize:vertical}
+.mk-cats{display:grid;grid-template-columns:1fr 1fr;gap:.4rem}
+.mk-cats label{margin:0;font-weight:500;display:flex;align-items:center;gap:.4rem;border:1px solid var(--line);border-radius:8px;padding:.45rem .5rem;cursor:pointer}
+.mk-cats input{accent-color:var(--accent)}
+.mk-buttons{display:flex;gap:.5rem;margin-top:1rem}
+.mk-actions{display:flex;flex-wrap:wrap;gap:.5rem;margin:.8rem 0}
+.mk-actions .danger{color:#c0392b;border-color:#c0392b}
+.mk-notes{white-space:pre-wrap;margin:.6rem 0;line-height:1.45}
+.mk-pin{width:30px;height:38px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.45))}
+.mk-lockbadge{font-size:.8rem;color:var(--muted)}
+
 .wet-swatch{width:22px;height:22px;border-radius:4px;overflow:hidden;display:flex;flex-direction:column;flex:none;margin-top:.05rem;border:1.5px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4)}
 .wet-swatch i{flex:1;background:var(--marsh)}
 .wet-swatch i:nth-child(2){background:var(--swamp)}
@@ -132,6 +157,7 @@ main{position:relative;flex:1;min-height:0}
   <div class="layers" id="layers">
     <button id="layersBtn" aria-expanded="false" aria-controls="layersBody"><span>Layers</span><span aria-hidden="true">▾</span></button>
     <div class="layers-body" id="layersBody">
+      <label class="layer-row"><input type="checkbox" data-layer="mine" data-default="on"><span class="acc-icon" style="background:#c0392b;border-radius:50% 50% 50% 0;transform:rotate(-45deg)"></span><span><b>My markers</b><small>Spots you’ve saved. They’re stored only in this browser on this device.</small></span></label>
       <label class="layer-row"><input type="checkbox" data-layer="tides" data-default="on"><span class="acc-icon tide" data-icon="tide"></span><span><b>Tides</b><small>Seacoast tide times and heights for the next 7 days. Live NOAA stations also show the current water level, water temp and wind.</small></span></label>
       <label class="layer-row"><input type="checkbox" data-layer="ramp"><span class="acc-icon" data-icon="ramp"></span><span><b>Boat ramps</b><small>Launch sites for trailered boats, with a concrete, gravel or paved ramp.</small></span></label>
       <label class="layer-row"><input type="checkbox" data-layer="cartop"><span class="acc-icon cartop" data-icon="cartop"></span><span><b>Cartop access</b><small>Hand-carry launches for canoes, kayaks and small boats you can lift off a car. No trailer ramp.</small></span></label>
@@ -144,6 +170,12 @@ main{position:relative;flex:1;min-height:0}
     <button class="close" id="close" aria-label="Close details">×</button>
     <div id="detailBody"></div>
   </aside>
+  <button class="add-btn" id="addBtn">📍 Add marker</button>
+  <div class="crosshair" aria-hidden="true"><svg viewBox="0 0 44 44" width="44" height="44"><g stroke="#fff" stroke-width="4" stroke-linecap="round"><path d="M22 2v13M22 29v13M2 22h13M29 22h13"/><circle cx="22" cy="22" r="1.6" fill="#fff"/></g><g stroke="#c0392b" stroke-width="2" stroke-linecap="round"><path d="M22 2v13M22 29v13M2 22h13M29 22h13"/></g><circle cx="22" cy="22" r="1.4" fill="#c0392b"/></svg></div>
+  <div class="place-bar" id="placeBar" role="dialog" aria-label="Place marker">
+    <p id="placeMsg">Click the map, or drag it, to put the crosshair on your spot.</p>
+    <button class="primary" id="placeOk">Save here</button><button id="placeCancel">Cancel</button>
+  </div>
 </main>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
@@ -437,7 +469,7 @@ const WetlandLayer = L.TileLayer.extend({
 });
 const wetlands = new WetlandLayer('', { tileSize: 256, minZoom: WET_MIN_ZOOM, maxZoom: 18, opacity: 1,
   attribution: 'Wetlands: U.S. Fish &amp; Wildlife Service NWI' });
-map.attributionControl.addAttribution('Page v15 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
+map.attributionControl.addAttribution('Page v16 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
 // A slow or failed square is retried up to twice (after 2 s, then 5 s). We never switch to the
 // server's standard green colors; a square that still fails just stays blank.
 wetlands.on('tileerror', e => {
@@ -550,6 +582,149 @@ function buildTides() {
     L.marker([st.lat, st.lon], { icon, pane: 'accessHigh' }).bindTooltip(tip).on('click', () => openTide(st)).addTo(tideLayer);
   }
 }
+
+
+// ---------- My markers (saved in this browser only) ----------
+const CATS = {
+  hunting: { label: 'Hunting', emoji: '🦆', color: '#b5541c', types: ['Ducks', 'Geese', 'Sea ducks', 'Scouting'] },
+  fishing: { label: 'Fishing', emoji: '🎣', color: '#1f6fb2', types: ['Trout', 'Bass', 'Panfish', 'Ice fishing'] },
+  boating: { label: 'Boating / Paddling', emoji: '🛶', color: '#11806f', types: ['Put-in / take-out', 'Good paddle', 'Hazard', 'Campsite'] },
+  general: { label: 'General / Other', emoji: '📍', color: '#5b6470', types: [] }
+};
+const MK_KEY = 'myMarkers-v1';
+let myMarkers = [];
+try { myMarkers = JSON.parse(localStorage.getItem(MK_KEY) || '[]'); } catch (e) { myMarkers = []; }
+function saveMarkers() {
+  try { localStorage.setItem(MK_KEY, JSON.stringify(myMarkers)); return true; }
+  catch (e) { alert('Your browser would not save the marker (private browsing or storage turned off).'); return false; }
+}
+map.createPane('mine').style.zIndex = 700;
+const mineLayer = L.layerGroup();
+overlayLayers.mine = mineLayer;
+
+function pinIcon(m) {
+  const c = (CATS[m.cat] || CATS.general);
+  return L.divIcon({ className: '', iconSize: [30, 38], iconAnchor: [15, 37],
+    html: `<svg class="mk-pin" viewBox="0 0 30 38" aria-hidden="true"><path d="M15 37C15 37 2 22.5 2 14a13 13 0 0 1 26 0c0 8.5-13 23-13 23Z" fill="${c.color}" stroke="#fff" stroke-width="2"/><circle cx="15" cy="14" r="8.5" fill="#fff"/><text x="15" y="18.5" font-size="11" text-anchor="middle">${c.emoji}</text></svg>` });
+}
+function drawMine() {
+  mineLayer.clearLayers();
+  for (const m of myMarkers) {
+    if (placing && placing.moveId === m.id) continue; // hidden while being moved
+    L.marker([m.lat, m.lon], { icon: pinIcon(m), pane: 'mine', keyboard: true, title: m.name })
+      .bindTooltip(esc(m.name), { offset: [0, -30], direction: 'top' })
+      .on('click', () => openMarker(m.id)).addTo(mineLayer);
+  }
+}
+
+// ----- Placing / moving with the crosshair -----
+let placing = null; // { moveId? }
+const mainEl = document.querySelector('main');
+function startPlacing(opts = {}) {
+  placing = opts;
+  document.getElementById('detail').classList.remove('show');
+  document.getElementById('placeMsg').textContent = opts.moveId
+    ? 'Click the map, or drag it, to put the crosshair on the new spot.'
+    : 'Click the map, or drag it, to put the crosshair on your spot.';
+  document.getElementById('placeOk').textContent = opts.moveId ? 'Save new spot' : 'Save here';
+  mainEl.classList.add('placing');
+  if (!mineLayer._map) setLayer('mine', true), syncLayerBox('mine');
+  drawMine();
+  document.getElementById('placeOk').focus();
+}
+function stopPlacing() { placing = null; mainEl.classList.remove('placing'); drawMine(); }
+map.on('click', e => { if (placing) map.panTo(e.latlng); });
+document.getElementById('addBtn').addEventListener('click', () => {
+  if (map.getZoom() < 12) map.setZoom(13);
+  startPlacing();
+});
+document.getElementById('placeCancel').addEventListener('click', stopPlacing);
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && placing) stopPlacing(); });
+document.getElementById('placeOk').addEventListener('click', () => {
+  const c = map.getCenter(), lat = +c.lat.toFixed(6), lon = +c.lng.toFixed(6);
+  if (placing && placing.moveId) {
+    const m = myMarkers.find(x => x.id === placing.moveId);
+    if (m) { m.lat = lat; m.lon = lon; m.locked = true; m.updated = Date.now(); saveMarkers(); }
+    const id = placing.moveId; stopPlacing(); openMarker(id);
+  } else {
+    stopPlacing(); openMarkerForm(null, lat, lon);
+  }
+});
+
+// ----- Save / edit form -----
+function openMarkerForm(id, lat, lon) {
+  const m = id ? myMarkers.find(x => x.id === id) : null;
+  const name = m ? m.name : 'Saved spot ' + (myMarkers.length + 1);
+  const cat = m ? m.cat : 'general';
+  const catRadios = Object.entries(CATS).map(([k, c]) =>
+    `<label><input type="radio" name="mkcat" value="${k}" ${k === cat ? 'checked' : ''}> ${c.emoji} ${c.label}</label>`).join('');
+  document.getElementById('detailBody').innerHTML = `<h2>${m ? 'Edit marker' : 'Save marker'}</h2>
+    <p class="sub">${(m ? m.lat : lat).toFixed(5)}, ${(m ? m.lon : lon).toFixed(5)}</p>
+    <form class="mk-form" id="mkForm">
+      <label for="mkName">Name</label><input type="text" id="mkName" maxlength="80" value="${esc(name)}" required>
+      <label>Category</label><div class="mk-cats">${catRadios}</div>
+      <label for="mkType">Type (optional)</label><select id="mkType"></select>
+      <label for="mkNotes">Notes (optional)</label><textarea id="mkNotes" maxlength="2000" placeholder="Anything worth remembering…">${m ? esc(m.notes || '') : ''}</textarea>
+      <div class="mk-buttons"><button class="primary" type="submit">Save</button><button type="button" id="mkCancel">Cancel</button></div>
+      <p class="layer-note">Saved only in this browser on this device.</p>
+    </form>`;
+  const typeSel = document.getElementById('mkType');
+  const fillTypes = (k, keep) => {
+    const types = (CATS[k] || CATS.general).types;
+    typeSel.innerHTML = '<option value="">No specific type</option>' + types.map(t => `<option ${t === keep ? 'selected' : ''}>${esc(t)}</option>`).join('');
+    typeSel.disabled = !types.length;
+  };
+  fillTypes(cat, m && m.type);
+  document.querySelectorAll('input[name=mkcat]').forEach(r => r.addEventListener('change', () => fillTypes(r.value, '')));
+  document.getElementById('mkCancel').addEventListener('click', () => m ? openMarker(m.id) : document.getElementById('detail').classList.remove('show'));
+  document.getElementById('mkForm').addEventListener('submit', ev => {
+    ev.preventDefault();
+    const rec = {
+      name: document.getElementById('mkName').value.trim() || name,
+      cat: (document.querySelector('input[name=mkcat]:checked') || {}).value || 'general',
+      type: typeSel.value || '', notes: document.getElementById('mkNotes').value.trim(), updated: Date.now()
+    };
+    let target;
+    if (m) { Object.assign(m, rec); target = m; }
+    else { target = { id: 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), lat, lon, locked: true, created: Date.now(), ...rec }; myMarkers.push(target); }
+    if (saveMarkers()) { drawMine(); openMarker(target.id); }
+  });
+  document.getElementById('detail').classList.add('show');
+  const nameEl = document.getElementById('mkName'); nameEl.focus(); if (!m) nameEl.select();
+}
+
+// ----- Marker details -----
+function openMarker(id) {
+  const m = myMarkers.find(x => x.id === id);
+  if (!m) return;
+  const c = CATS[m.cat] || CATS.general;
+  const d = t => new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  document.getElementById('detailBody').innerHTML = `<span class="badge">${c.emoji} ${esc(c.label)}${m.type ? ' · ' + esc(m.type) : ''}</span>
+    <h2>${esc(m.name)}</h2>
+    <p class="sub">${m.lat.toFixed(5)}, ${m.lon.toFixed(5)} · saved ${d(m.created)}${m.updated && m.updated - m.created > 60000 ? ', updated ' + d(m.updated) : ''}</p>
+    ${m.notes ? `<div class="mk-notes">${esc(m.notes)}</div>` : '<p class="layer-note">No notes yet. Tap Edit to add some.</p>'}
+    <div class="mk-actions">
+      <button id="mkLock" aria-pressed="${!m.locked}">${m.locked ? '🔒 Locked' : '🔓 Unlocked'}</button>
+      ${m.locked ? '' : '<button class="primary" id="mkMove">Move</button>'}
+      <button id="mkEdit">Edit</button>
+      <button class="danger" id="mkDel">Delete</button>
+    </div>
+    <p class="mk-lockbadge">${m.locked ? 'Locked markers can’t be moved. Tap the lock to allow moving.' : 'Unlocked: tap Move to reposition it. It locks again after moving.'}</p>
+    <p><a href="https://www.google.com/maps/dir/?api=1&destination=${m.lat},${m.lon}" target="_blank" rel="noopener">Get directions</a></p>`;
+  document.getElementById('mkLock').onclick = () => { m.locked = !m.locked; saveMarkers(); openMarker(id); };
+  const mv = document.getElementById('mkMove');
+  if (mv) mv.onclick = () => { map.setView([m.lat, m.lon], Math.max(map.getZoom(), 14)); startPlacing({ moveId: id }); };
+  document.getElementById('mkEdit').onclick = () => openMarkerForm(id);
+  document.getElementById('mkDel').onclick = () => {
+    if (confirm(`Delete “${m.name}”? This can’t be undone.`)) {
+      myMarkers = myMarkers.filter(x => x.id !== id); saveMarkers(); drawMine();
+      document.getElementById('detail').classList.remove('show');
+    }
+  };
+  document.getElementById('detail').classList.add('show');
+}
+function syncLayerBox(kind) { const cb = document.querySelector(`[data-layer="${kind}"]`); if (cb) cb.checked = !!(overlayLayers[kind] || accessLayers[kind])._map; }
+drawMine();
 
 function updateWetNote() {
   document.getElementById('wetZoomNote').style.display = map.getZoom() < WET_MIN_ZOOM ? '' : 'none';
