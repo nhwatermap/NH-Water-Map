@@ -74,7 +74,8 @@ main{position:relative;flex:1;min-height:0}
 .legend.collapsed .lt-short{display:inline;font-weight:600}
 .legend.collapsed .lt-arrow::after{content:'▸'}
 
-.toolbar{position:absolute;left:3.4rem;top:.75rem;z-index:560;display:flex;gap:.5rem;align-items:flex-start;flex-wrap:wrap;max-width:calc(100% - 4.4rem)}
+.toolbar{position:absolute;left:3.4rem;top:.75rem;z-index:560;display:flex;gap:.5rem;align-items:flex-start;flex-wrap:wrap;max-width:calc(100% - 4.4rem);pointer-events:none}
+.toolbar > *{pointer-events:auto}
 .layers{background:var(--panel);border:1px solid var(--line);border-radius:8px;max-width:min(300px,100%);font-size:.9rem}
 .layers > button{font:inherit;font-weight:600;background:transparent;border:0;color:var(--ink);padding:.5rem .8rem;cursor:pointer;width:100%;text-align:left;display:flex;justify-content:space-between;gap:1rem}
 .layers > button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
@@ -263,8 +264,9 @@ const BASEMAPS = {
     { maxZoom: 17, attribution: 'Map: Esri, HERE, Garmin, USGS, NGA, EPA, NPS' }),
   usgsTopo: L.tileLayer('https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}',
     { maxZoom: 18, maxNativeZoom: 16, attribution: 'Map: USGS The National Map' }),
-  usgsSat: L.tileLayer('https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryTopo/MapServer/tile/{z}/{y}/{x}',
-    { maxZoom: 18, maxNativeZoom: 16, attribution: 'Map: USGS The National Map (imagery and labels)' })
+  // Drawn on request by USGS (the way USGS's own examples connect to it); the pre-made tiles have gaps
+  usgsSat: L.tileLayer.wms('https://basemap.nationalmap.gov/arcgis/services/USGSImageryTopo/MapServer/WmsServer',
+    { layers: '0', format: 'image/jpeg', transparent: false, maxZoom: 18, attribution: 'Map: USGS The National Map (imagery and labels)' })
 };
 let basemapKey = 'esri';
 try { if (BASEMAPS[localStorage.getItem('basemap')]) basemapKey = localStorage.getItem('basemap'); } catch (e) { }
@@ -586,7 +588,7 @@ const WetlandLayer = L.TileLayer.extend({
 });
 const wetlands = new WetlandLayer('', { tileSize: 256, minZoom: WET_MIN_ZOOM, maxZoom: 18, opacity: 1,
   attribution: 'Wetlands: U.S. Fish &amp; Wildlife Service NWI' });
-map.attributionControl.addAttribution('Page v23 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
+map.attributionControl.addAttribution('Page v24 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
 // A slow or failed square is retried up to twice (after 2 s, then 5 s). We never switch to the
 // server's standard green colors; a square that still fails just stays blank.
 wetlands.on('tileerror', e => {
