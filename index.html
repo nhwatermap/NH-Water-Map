@@ -85,6 +85,11 @@ main{position:relative;flex:1;min-height:0}
 .layer-row b{display:block;font-weight:600}
 .layer-row small{display:block;color:var(--muted);font-size:.8rem;line-height:1.3}
 .layer-note{color:var(--muted);font-size:.75rem;margin:.35rem 0 0;line-height:1.3}
+.map-style{border:0;margin:0 0 .3rem;padding:.2rem 0 .5rem;display:flex;flex-wrap:wrap;gap:.3rem .8rem}
+.map-style legend{font-weight:600;padding:0;margin-bottom:.3rem;font-size:.85rem;color:var(--muted)}
+.map-style label{display:flex;align-items:center;gap:.3rem;cursor:pointer;font-size:.88rem}
+.map-style input{accent-color:var(--accent)}
+
 /* ---------- My markers ---------- */
 .add-btn{font:inherit;font-weight:600;background:var(--accent);color:var(--panel);border:0;border-radius:8px;padding:.5rem .9rem;box-shadow:0 1px 4px rgba(0,0,0,.3);cursor:pointer;white-space:nowrap}
 .add-btn:focus-visible,.place-bar button:focus-visible,.mk-actions button:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
@@ -181,19 +186,29 @@ main{position:relative;flex:1;min-height:0}
   .status{width:100%;margin-left:0}
 }
 .leaflet-container{font-family:inherit}
+/* Phones: shorter header labels (kept last so it wins) */
+.short{display:none}
+@media (max-width:640px){
+  header .full{display:none}
+  header .short{display:inline}
+  header{padding:.5rem .7rem;gap:.4rem .6rem}
+  h1{font-size:1.2rem}
+  .modes button{padding:.35rem .6rem;font-size:.92rem;white-space:nowrap}
+  .status{font-size:.8rem}
+}
 </style>
 </head>
 <body>
 <header>
   <h1>NH Water Conditions</h1>
   <div class="modes" role="group" aria-label="What to color the map by">
-    <button data-mode="change" aria-pressed="true">24-hr change</button>
-    <button data-mode="normal" aria-pressed="false" id="normalBtn">vs. month avg</button>
-    <button data-mode="summer" aria-pressed="false">vs. summer</button>
-    <button data-mode="level" aria-pressed="false">Water level</button>
-    <button data-mode="temp" aria-pressed="false">Water temp</button>
+    <button data-mode="change" aria-pressed="true"><span class="full">24-hr change</span><span class="short">24 hr</span></button>
+    <button data-mode="normal" aria-pressed="false" id="normalBtn"><span class="full">vs. month avg</span><span class="short">vs avg</span></button>
+    <button data-mode="summer" aria-pressed="false"><span class="full">vs. summer</span><span class="short">Summer</span></button>
+    <button data-mode="level" aria-pressed="false"><span class="full">Water level</span><span class="short">Level</span></button>
+    <button data-mode="temp" aria-pressed="false"><span class="full">Water temp</span><span class="short">Temp</span></button>
   </div>
-  <div class="status"><span id="status">Loading…</span></div>
+  <div class="status"><span id="status"><span class="full">Loading…</span><span class="short">Loading…</span></span></div>
 </header>
 <main>
   <div id="map"></div>
@@ -203,6 +218,11 @@ main{position:relative;flex:1;min-height:0}
   <div class="layers" id="layers">
     <button id="layersBtn" aria-expanded="false" aria-controls="layersBody"><span>Layers</span><span aria-hidden="true">▾</span></button>
     <div class="layers-body" id="layersBody">
+      <fieldset class="map-style"><legend>Map style</legend>
+        <label><input type="radio" name="basemap" value="esri"> Topo (Esri)</label>
+        <label><input type="radio" name="basemap" value="usgsTopo"> USGS topo</label>
+        <label><input type="radio" name="basemap" value="usgsSat"> Satellite (USGS)</label>
+      </fieldset>
       <label class="layer-row"><input type="checkbox" data-layer="mine" data-default="on"><span class="acc-icon" style="background:#c0392b;border-radius:50% 50% 50% 0;transform:rotate(-45deg)"></span><span><b>My markers</b><small>Spots you’ve saved. They’re stored only in this browser on this device.</small></span></label>
       <label class="layer-row"><input type="checkbox" data-layer="tides" data-default="on"><span class="acc-icon tide" data-icon="tide"></span><span><b>Tides</b><small>Seacoast tide times and heights for the next 7 days. Live NOAA stations also show the current water level, water temp and wind.</small></span></label>
       <label class="layer-row"><input type="checkbox" data-layer="ramp"><span class="acc-icon" data-icon="ramp"></span><span><b>Boat ramps</b><small>Launch sites for trailered boats, with a concrete, gravel or paved ramp.</small></span></label>
@@ -237,9 +257,26 @@ let mode = 'change';
 const markers = L.layerGroup();
 
 const map = L.map('map').setView([43.9, -71.55], 8);
-L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', {
-  maxZoom: 17, attribution: 'Map: Esri, HERE, Garmin, USGS, NGA, EPA, NPS | Water data: USGS, US Army Corps of Engineers, NH DES | Access sites: NH Fish and Game via NH GRANIT'
-}).addTo(map);
+// Base map styles (switch in the Layers panel)
+const BASEMAPS = {
+  esri: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
+    { maxZoom: 17, attribution: 'Map: Esri, HERE, Garmin, USGS, NGA, EPA, NPS' }),
+  usgsTopo: L.tileLayer('https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}',
+    { maxZoom: 18, maxNativeZoom: 16, attribution: 'Map: USGS The National Map' }),
+  usgsSat: L.tileLayer('https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryTopo/MapServer/tile/{z}/{y}/{x}',
+    { maxZoom: 18, maxNativeZoom: 16, attribution: 'Map: USGS The National Map (imagery and labels)' })
+};
+let basemapKey = 'esri';
+try { if (BASEMAPS[localStorage.getItem('basemap')]) basemapKey = localStorage.getItem('basemap'); } catch (e) { }
+BASEMAPS[basemapKey].addTo(map);
+map.attributionControl.addAttribution('Water data: USGS, US Army Corps of Engineers, NH DES | Access sites: NH Fish and Game via NH GRANIT');
+function setBasemap(key) {
+  if (!BASEMAPS[key] || key === basemapKey) return;
+  map.removeLayer(BASEMAPS[basemapKey]);
+  BASEMAPS[key].addTo(map).bringToBack();
+  basemapKey = key;
+  try { localStorage.setItem('basemap', key); } catch (e) { }
+}
 markers.addTo(map);
 
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
@@ -549,7 +586,7 @@ const WetlandLayer = L.TileLayer.extend({
 });
 const wetlands = new WetlandLayer('', { tileSize: 256, minZoom: WET_MIN_ZOOM, maxZoom: 18, opacity: 1,
   attribution: 'Wetlands: U.S. Fish &amp; Wildlife Service NWI' });
-map.attributionControl.addAttribution('Page v22 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
+map.attributionControl.addAttribution('Page v23 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
 // A slow or failed square is retried up to twice (after 2 s, then 5 s). We never switch to the
 // server's standard green colors; a square that still fails just stays blank.
 wetlands.on('tileerror', e => {
@@ -1057,6 +1094,13 @@ document.addEventListener('click', e => {
   b.textContent = open ? 'ⓘ Hide explanation' : 'ⓘ What’s this for?';
 });
 
+
+// Map style radio buttons
+document.querySelectorAll('input[name=basemap]').forEach(r => {
+  r.checked = r.value === basemapKey;
+  r.addEventListener('change', () => r.checked && setBasemap(r.value));
+});
+
 function updateWetNote() {
   document.getElementById('wetZoomNote').style.display = map.getZoom() < WET_MIN_ZOOM ? '' : 'none';
 }
@@ -1087,7 +1131,7 @@ fetch('data.json?v=' + Date.now())
   .then(r => { if (!r.ok) throw new Error('data.json not found yet'); return r.json(); })
   .then(d => {
     if (d.updated) collectedAt = +new Date(d.updated);
-    document.getElementById('normalBtn').textContent = 'vs. ' + monthShort() + ' avg';
+    document.getElementById('normalBtn').innerHTML = `<span class="full">vs. ${monthShort()} avg</span><span class="short">vs ${monthShort()}</span>`;
     sites = (d.sites || []).filter(s => s.lat != null && s.lon != null);
     accessSites = (d.access && d.access.sites) || [];
     tideStations = (d.tides && d.tides.stations) || [];
@@ -1096,7 +1140,7 @@ fetch('data.json?v=' + Date.now())
     document.querySelectorAll('[data-layer]').forEach(cb => { if (cb.checked) setLayer(cb.dataset.layer, true); });
     draw();
     const count = src => sites.filter(s => s.source === src).length;
-    document.getElementById('status').textContent = `${count('USGS')} USGS, ${count('Army Corps')} Army Corps, ${count('NHDES')} NH DES · updated ${when(d.updated)}`;
+    document.getElementById('status').innerHTML = `<span class="full">${count('USGS')} USGS, ${count('Army Corps')} Army Corps, ${count('NHDES')} NH DES · updated ${when(d.updated)}</span><span class="short">${count('USGS') + count('Army Corps') + count('NHDES')} stations · ${when(d.updated)}</span>`;
     if (!sites.length) showError('The last update found no stations. Check the Actions tab on GitHub for what went wrong.');
   })
   .catch(e => {
