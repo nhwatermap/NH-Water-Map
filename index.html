@@ -118,6 +118,10 @@ main{position:relative;flex:1;min-height:0}
 .spot-list .em{font-size:1.15rem;line-height:1.2}
 .spot-list b{display:block}
 .spot-list small{color:var(--muted)}
+.spot-list .chg{color:var(--accent);font-weight:600}
+.spot-list label{display:flex;gap:.6rem;align-items:flex-start;padding:.55rem .3rem;border-top:1px solid var(--line);cursor:pointer}
+.spot-list label input{margin-top:.3rem;accent-color:var(--accent);flex:none}
+.imp-h{font-size:.95rem;margin:1rem 0 .2rem}
 .qr-box{background:#fff;padding:12px;border-radius:10px;width:min(260px,100%);margin:.6rem 0}
 .qr-box svg{display:block;width:100%;height:auto}
 .link-box{width:100%;font:inherit;font-size:.8rem;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:.45rem .5rem}
@@ -511,7 +515,7 @@ const WetlandLayer = L.TileLayer.extend({
 });
 const wetlands = new WetlandLayer('', { tileSize: 256, minZoom: WET_MIN_ZOOM, maxZoom: 18, opacity: 1,
   attribution: 'Wetlands: U.S. Fish &amp; Wildlife Service NWI' });
-map.attributionControl.addAttribution('Page v20 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
+map.attributionControl.addAttribution('Page v21 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
 // A slow or failed square is retried up to twice (after 2 s, then 5 s). We never switch to the
 // server's standard green colors; a square that still fails just stays blank.
 wetlands.on('tileerror', e => {
@@ -827,7 +831,7 @@ function fromB64url(str) {
   return Uint8Array.from(atob(str), c => c.charCodeAt(0));
 }
 async function packMarkers(list) {
-  const json = JSON.stringify({ v: 1, m: list.map(m => [m.name, CAT_CODE[m.cat] || 'g', m.type || '', m.notes || '', +(+m.lat).toFixed(5), +(+m.lon).toFixed(5), m.date || '']) });
+  const json = JSON.stringify({ v: 1, m: list.map(m => [m.name, CAT_CODE[m.cat] || 'g', m.type || '', m.notes || '', +(+m.lat).toFixed(5), +(+m.lon).toFixed(5), m.date || '', Math.round((m.updated || m.created || 0) / 1000)]) });
   const bytes = new TextEncoder().encode(json);
   if (window.CompressionStream) {
     const out = await new Response(new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate-raw'))).arrayBuffer();
@@ -841,7 +845,8 @@ async function unpackMarkers(str) {
   const data = JSON.parse(new TextDecoder().decode(bytes));
   return (data.m || []).filter(r => Array.isArray(r) && isFinite(r[4]) && isFinite(r[5])).map(r => ({
     name: String(r[0] || 'Shared spot').slice(0, 80), cat: CODE_CAT[r[1]] || 'general', type: String(r[2] || '').slice(0, 40),
-    notes: String(r[3] || '').slice(0, 2000), lat: +r[4], lon: +r[5], date: /^\d{4}-\d{2}-\d{2}$/.test(r[6] || '') ? r[6] : ''
+    notes: String(r[3] || '').slice(0, 2000), lat: +r[4], lon: +r[5], date: /^\d{4}-\d{2}-\d{2}$/.test(r[6] || '') ? r[6] : '',
+    updated: isFinite(r[7]) && r[7] > 0 ? r[7] * 1000 : 0
   }));
 }
 const pageBase = () => location.origin + location.pathname;
@@ -911,28 +916,62 @@ async function openShare(list, title) {
 }
 
 function showImport(list, source) {
-  const near = (a, b) => Math.abs(a.lat - b.lat) < 0.0001 && Math.abs(a.lon - b.lon) < 0.0001 && a.name.trim().toLowerCase() === b.name.trim().toLowerCase();
-  const fresh = list.filter(n => !myMarkers.some(m => near(m, n)));
-  const dupes = list.length - fresh.length;
-  const rows = fresh.slice(0, 60).map(m => `<li><button disabled><span class="em" aria-hidden="true">${(CATS[m.cat] || CATS.general).emoji}</span><span><b>${esc(m.name)}</b><small>${m.date ? obsDate(m.date) : 'No date'}${m.type ? ' · ' + esc(m.type) : ''}</small></span></button></li>`).join('');
-  document.getElementById('detailBody').innerHTML = fresh.length
-    ? `<h2>Add ${fresh.length} spot${fresh.length === 1 ? '' : 's'}?</h2>
-       <p class="sub">From ${esc(source)}${dupes ? ` · ${dupes} you already have will be skipped` : ''}</p>
-       <ul class="spot-list">${rows}</ul>${fresh.length > 60 ? `<p class="layer-note">…and ${fresh.length - 60} more</p>` : ''}
-       <div class="mk-actions"><button class="primary" id="impYes">Add ${fresh.length === 1 ? 'it' : 'them'}</button><button id="impNo">No thanks</button></div>`
-    : `<h2>Nothing new to add</h2><p>You already have ${list.length === 1 ? 'this spot' : 'all ' + list.length + ' of these spots'}.</p><div class="mk-actions"><button id="impNo">OK</button></div>`;
+  const sameName = (a, b) => a.name.trim().toLowerCase() === b.name.trim().toLowerCase();
+  const dist = (a, b) => Math.max(Math.abs(a.lat - b.lat), Math.abs(a.lon - b.lon));
+  // Same spot = same name within ~10 m, or anything within ~3 m (a renamed spot)
+  const findMatch = n => myMarkers.find(m => (sameName(m, n) && dist(m, n) < 0.0001) || dist(m, n) < 0.00003);
+  const FIELDS = [['name', 'name'], ['cat', 'category'], ['type', 'type'], ['notes', 'notes'], ['date', 'date']];
+  const fresh = [], changed = [];
+  let skipped = 0, older = 0;
+  for (const n of list) {
+    const m = findMatch(n);
+    if (!m) { fresh.push(n); continue; }
+    const diffs = FIELDS.filter(([k]) => String(m[k] || '') !== String(n[k] || '')).map(([, label]) => label);
+    if (!diffs.length) { skipped++; continue; }
+    const mine = m.updated || m.created || 0;
+    if (n.updated && mine && n.updated <= mine) { older++; continue; } // ours is newer: keep it
+    changed.push({ incoming: n, mine: m, diffs });
+  }
+  const row = (m, extra = '') => `<span class="em" aria-hidden="true">${(CATS[m.cat] || CATS.general).emoji}</span><span><b>${esc(m.name)}</b><small>${m.date ? obsDate(m.date) : 'No date'}${m.type ? ' · ' + esc(m.type) : ''}</small>${extra}</span>`;
+  const freshRows = fresh.slice(0, 60).map(m => `<li><button disabled>${row(m)}</button></li>`).join('');
+  const changedRows = changed.map((c, i) => `<li><label><input type="checkbox" data-i="${i}" checked>${row(c.incoming,
+    `<small class="chg">Changed: ${c.diffs.join(', ')}${c.diffs.includes('name') ? ' (was “' + esc(c.mine.name) + '”)' : ''}</small>`)}</label></li>`).join('');
+  const notes = [skipped ? `${skipped} already the same here` : '', older ? `${older} newer on this device (kept yours)` : ''].filter(Boolean).join(' · ');
+  const body = document.getElementById('detailBody');
+  if (!fresh.length && !changed.length) {
+    body.innerHTML = `<h2>Nothing new to add</h2><p>Everything from ${esc(source)} is already here${older ? ', and your versions are newer' : ''}.</p><div class="mk-actions"><button id="impNo">OK</button></div>`;
+  } else {
+    body.innerHTML = `<h2>Spots from ${esc(source)}</h2>
+      ${notes ? `<p class="sub">${notes}</p>` : ''}
+      ${fresh.length ? `<h3 class="imp-h">New (${fresh.length})</h3><ul class="spot-list">${freshRows}</ul>${fresh.length > 60 ? `<p class="layer-note">…and ${fresh.length - 60} more</p>` : ''}` : ''}
+      ${changed.length ? `<h3 class="imp-h">Edited more recently on the other device (${changed.length})</h3><p class="layer-note">Checked spots will be updated to the incoming version. Uncheck any you want to keep as they are here.</p><ul class="spot-list">${changedRows}</ul>` : ''}
+      <div class="mk-actions"><button class="primary" id="impYes"></button><button id="impNo">No thanks</button></div>`;
+    const yes = document.getElementById('impYes');
+    const label = () => {
+      const u = body.querySelectorAll('input[data-i]:checked').length;
+      const parts = [fresh.length ? `Add ${fresh.length}` : '', u ? `update ${u}` : ''].filter(Boolean);
+      yes.textContent = parts.length ? parts.join(' and ').replace(/^./, ch => ch.toUpperCase()) : 'Nothing selected';
+      yes.disabled = !parts.length;
+    };
+    body.querySelectorAll('input[data-i]').forEach(cb => cb.addEventListener('change', label));
+    label();
+    yes.onclick = () => {
+      const now = Date.now(), touched = [];
+      fresh.forEach((m, i) => { const rec = { ...m, id: 'm' + (now + i).toString(36) + Math.random().toString(36).slice(2, 6), locked: true, created: now, updated: m.updated || now }; myMarkers.push(rec); touched.push(rec); });
+      body.querySelectorAll('input[data-i]:checked').forEach(cb => {
+        const { incoming, mine } = changed[+cb.dataset.i];
+        Object.assign(mine, { name: incoming.name, cat: incoming.cat, type: incoming.type, notes: incoming.notes, date: incoming.date,
+          lat: incoming.lat, lon: incoming.lon, updated: incoming.updated || now });
+        touched.push(mine);
+      });
+      if (!saveMarkers()) return;
+      if (!mineLayer._map) { setLayer('mine', true); syncLayerBox('mine'); }
+      drawMine();
+      if (touched.length) map.fitBounds(L.latLngBounds(touched.map(m => [m.lat, m.lon])).pad(0.3), { maxZoom: 14 });
+      openMyList();
+    };
+  }
   document.getElementById('detail').classList.add('show');
-  const yes = document.getElementById('impYes');
-  if (yes) yes.onclick = () => {
-    const now = Date.now();
-    fresh.forEach((m, i) => myMarkers.push({ ...m, id: 'm' + (now + i).toString(36) + Math.random().toString(36).slice(2, 6), locked: true, created: now, updated: now }));
-    if (!saveMarkers()) return;
-    if (!mineLayer._map) { setLayer('mine', true); syncLayerBox('mine'); }
-    drawMine();
-    const b = L.latLngBounds(fresh.map(m => [m.lat, m.lon]));
-    map.fitBounds(b.pad(0.3), { maxZoom: 14 });
-    openMyList();
-  };
   document.getElementById('impNo').onclick = () => document.getElementById('detail').classList.remove('show');
 }
 
@@ -952,7 +991,8 @@ document.getElementById('restoreFile').addEventListener('change', async e => {
     const data = JSON.parse(await f.text());
     const list = (Array.isArray(data) ? data : data.markers || []).filter(m => m && isFinite(m.lat) && isFinite(m.lon)).map(m => ({
       name: String(m.name || 'Saved spot').slice(0, 80), cat: CATS[m.cat] ? m.cat : 'general', type: String(m.type || '').slice(0, 40),
-      notes: String(m.notes || '').slice(0, 2000), lat: +m.lat, lon: +m.lon, date: /^\d{4}-\d{2}-\d{2}$/.test(m.date || '') ? m.date : ''
+      notes: String(m.notes || '').slice(0, 2000), lat: +m.lat, lon: +m.lon, date: /^\d{4}-\d{2}-\d{2}$/.test(m.date || '') ? m.date : '',
+      updated: +m.updated || +m.created || 0
     }));
     if (!list.length) throw new Error('no spots');
     showImport(list, 'backup file “' + f.name + '”');
