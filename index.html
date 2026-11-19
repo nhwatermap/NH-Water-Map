@@ -52,7 +52,18 @@ main{position:relative;flex:1;min-height:0}
 .legend .dot{width:12px;height:12px;border-radius:50%;flex:none;border:1px solid rgba(0,0,0,.25)}
 .legend p{margin:.4rem 0 0;color:var(--muted);font-size:.82rem}
 .legend .shapes{border-top:1px solid var(--line);margin-top:.5rem;padding-top:.45rem}
-.layers{position:absolute;left:3.4rem;top:.75rem;z-index:550;background:var(--panel);border:1px solid var(--line);border-radius:8px;max-width:min(300px,calc(100% - 4.4rem));font-size:.9rem}
+.legend-toggle{all:unset;display:flex;align-items:center;justify-content:space-between;gap:.6rem;width:100%;font-weight:700;cursor:pointer;margin-bottom:.35rem}
+.legend-toggle:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:3px}
+.legend-toggle .lt-arrow::after{content:'▾';color:var(--muted)}
+.legend-toggle .lt-short{display:none}
+.legend.collapsed{padding:.45rem .7rem}
+.legend.collapsed .legend-toggle{margin:0}
+.legend.collapsed .legend-body,.legend.collapsed .lt-full{display:none}
+.legend.collapsed .lt-short{display:inline;font-weight:600}
+.legend.collapsed .lt-arrow::after{content:'▸'}
+
+.toolbar{position:absolute;left:3.4rem;top:.75rem;z-index:560;display:flex;gap:.5rem;align-items:flex-start;flex-wrap:wrap;max-width:calc(100% - 4.4rem)}
+.layers{background:var(--panel);border:1px solid var(--line);border-radius:8px;max-width:min(300px,100%);font-size:.9rem}
 .layers > button{font:inherit;font-weight:600;background:transparent;border:0;color:var(--ink);padding:.5rem .8rem;cursor:pointer;width:100%;text-align:left;display:flex;justify-content:space-between;gap:1rem}
 .layers > button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .layers-body{padding:0 .8rem .6rem;display:none}
@@ -63,11 +74,11 @@ main{position:relative;flex:1;min-height:0}
 .layer-row small{display:block;color:var(--muted);font-size:.8rem;line-height:1.3}
 .layer-note{color:var(--muted);font-size:.75rem;margin:.35rem 0 0;line-height:1.3}
 /* ---------- My markers ---------- */
-.add-btn{position:absolute;right:.75rem;bottom:1.5rem;z-index:560;font:inherit;font-weight:600;background:var(--accent);color:var(--panel);border:0;border-radius:999px;padding:.6rem 1rem;box-shadow:0 2px 6px rgba(0,0,0,.35);cursor:pointer}
+.add-btn{font:inherit;font-weight:600;background:var(--accent);color:var(--panel);border:0;border-radius:8px;padding:.5rem .9rem;box-shadow:0 1px 4px rgba(0,0,0,.3);cursor:pointer;white-space:nowrap}
 .add-btn:focus-visible,.place-bar button:focus-visible,.mk-actions button:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
 .crosshair{position:absolute;left:50%;top:50%;width:44px;height:44px;margin:-22px 0 0 -22px;z-index:600;pointer-events:none;display:none}
 .placing .crosshair{display:block}
-.placing .add-btn{display:none}
+.placing .toolbar{display:none}
 .placing .leaflet-marker-pane,.placing .leaflet-overlay-pane svg,.placing .leaflet-overlay-pane path{pointer-events:none!important}
 .place-bar{position:absolute;left:50%;transform:translateX(-50%);top:.75rem;z-index:620;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:.6rem .8rem;display:none;gap:.6rem;align-items:center;flex-wrap:wrap;justify-content:center;max-width:calc(100% - 1.5rem);box-shadow:0 2px 8px rgba(0,0,0,.3)}
 .placing .place-bar{display:flex}
@@ -84,6 +95,8 @@ main{position:relative;flex:1;min-height:0}
 .mk-actions{display:flex;flex-wrap:wrap;gap:.5rem;margin:.8rem 0}
 .mk-actions .danger{color:#c0392b;border-color:#c0392b}
 .mk-notes{white-space:pre-wrap;margin:.6rem 0;line-height:1.45}
+.mk-date{margin:.1rem 0 .2rem;font-weight:600}
+.mk-form input[type=date]{width:100%;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:.45rem .6rem;color-scheme:inherit}
 .mk-pin{width:30px;height:38px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.45))}
 .mk-lockbadge{font-size:.8rem;color:var(--muted)}
 
@@ -109,7 +122,7 @@ main{position:relative;flex:1;min-height:0}
 .detail dl{display:grid;grid-template-columns:auto 1fr;gap:.3rem .8rem;margin:0 0 1rem;font-size:.92rem}
 .detail dt{color:var(--muted)}
 .detail dd{margin:0}
-@media (max-width:640px){.layers{top:.5rem}}
+@media (max-width:640px){.toolbar{top:.5rem}}
 .legend .shape{width:12px;height:12px;flex:none;border:2px solid var(--ink)}
 .banner{position:absolute;top:.75rem;left:50%;transform:translateX(-50%);z-index:600;background:var(--panel);
   border:1px solid var(--rise2);border-left-width:4px;border-radius:6px;padding:.6rem .9rem;max-width:min(560px,calc(100% - 1.5rem));
@@ -154,6 +167,7 @@ main{position:relative;flex:1;min-height:0}
   <div id="map"></div>
   <div class="banner" id="banner" role="alert"></div>
   <div class="legend" id="legend"></div>
+  <div class="toolbar">
   <div class="layers" id="layers">
     <button id="layersBtn" aria-expanded="false" aria-controls="layersBody"><span>Layers</span><span aria-hidden="true">▾</span></button>
     <div class="layers-body" id="layersBody">
@@ -166,11 +180,12 @@ main{position:relative;flex:1;min-height:0}
       <p class="layer-note">Wetlands from the U.S. Fish and Wildlife Service National Wetlands Inventory. Mapped from aerial photos and may be years old; boundaries are approximate and many are on private land.</p>
     </div>
   </div>
+    <button class="add-btn" id="addBtn">📍 Add marker</button>
+  </div>
   <aside class="detail" id="detail" aria-live="polite">
     <button class="close" id="close" aria-label="Close details">×</button>
     <div id="detailBody"></div>
   </aside>
-  <button class="add-btn" id="addBtn">📍 Add marker</button>
   <div class="crosshair" aria-hidden="true"><svg viewBox="0 0 44 44" width="44" height="44"><g stroke="#fff" stroke-width="4" stroke-linecap="round"><path d="M22 2v13M22 29v13M2 22h13M29 22h13"/><circle cx="22" cy="22" r="1.6" fill="#fff"/></g><g stroke="#c0392b" stroke-width="2" stroke-linecap="round"><path d="M22 2v13M22 29v13M2 22h13M29 22h13"/></g><circle cx="22" cy="22" r="1.4" fill="#c0392b"/></svg></div>
   <div class="place-bar" id="placeBar" role="dialog" aria-label="Place marker">
     <p id="placeMsg">Click the map, or drag it, to put the crosshair on your spot.</p>
@@ -295,13 +310,14 @@ function drawLegend() {
     temp: 'Only some stations measure water temperature.',
     level: 'Each station has its own zero point, so compare a spot to itself over time. Tap one for its 7-day chart.'
   }[mode];
-  document.getElementById('legend').innerHTML = `<strong>${title}</strong>` +
+  const lg = document.getElementById('legend');
+  lg.innerHTML = `<button class="legend-toggle" aria-expanded="${!lg.classList.contains('collapsed')}" aria-controls="legendBody"><span class="lt-full">${title}</span><span class="lt-short">Legend: ${{ change: '24-hr change', normal: 'vs. ' + monthShort() + ' avg', level: 'water level', temp: 'water temp' }[mode]}</span><span class="lt-arrow" aria-hidden="true"></span></button><div class="legend-body" id="legendBody">` +
     rows.map(([v, l]) => `<div class="row"><span class="dot" style="background:${css(v)}"></span>${l}</div>`).join('') + `<p>${note}</p>` +
     `<div class="shapes">
       <div class="row"><span class="shape" style="border-radius:50%"></span>Lake, pond or reservoir</div>
       <div class="row"><span class="shape" style="border-radius:2px"></span>River, stream or tidal water</div>
       <div class="row"><span class="shape" style="border-radius:50%;border-color:var(--muted);background:transparent"></span>Hollow gray: no recent reading (often ice or sensor out for winter)</div>
-    </div>`;
+    </div></div>`;
 }
 
 function chartSVG(series) {
@@ -469,7 +485,7 @@ const WetlandLayer = L.TileLayer.extend({
 });
 const wetlands = new WetlandLayer('', { tileSize: 256, minZoom: WET_MIN_ZOOM, maxZoom: 18, opacity: 1,
   attribution: 'Wetlands: U.S. Fish &amp; Wildlife Service NWI' });
-map.attributionControl.addAttribution('Page v16 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
+map.attributionControl.addAttribution('Page v18 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
 // A slow or failed square is retried up to twice (after 2 s, then 5 s). We never switch to the
 // server's standard green colors; a square that still fails just stays blank.
 wetlands.on('tileerror', e => {
@@ -585,6 +601,10 @@ function buildTides() {
 
 
 // ---------- My markers (saved in this browser only) ----------
+// Dates are kept as YYYY-MM-DD in your local time
+const isoDate = dt => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+const todayISO = () => isoDate(new Date());
+const obsDate = iso => { const [y, mo, da] = iso.split('-').map(Number); return new Date(y, mo - 1, da).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }); };
 const CATS = {
   hunting: { label: 'Hunting', emoji: '🦆', color: '#b5541c', types: ['Ducks', 'Geese', 'Sea ducks', 'Scouting'] },
   fishing: { label: 'Fishing', emoji: '🎣', color: '#1f6fb2', types: ['Trout', 'Bass', 'Panfish', 'Ice fishing'] },
@@ -612,7 +632,7 @@ function drawMine() {
   for (const m of myMarkers) {
     if (placing && placing.moveId === m.id) continue; // hidden while being moved
     L.marker([m.lat, m.lon], { icon: pinIcon(m), pane: 'mine', keyboard: true, title: m.name })
-      .bindTooltip(esc(m.name), { offset: [0, -30], direction: 'top' })
+      .bindTooltip(esc(m.name) + (m.date ? '<br>' + obsDate(m.date) : ''), { offset: [0, -30], direction: 'top' })
       .on('click', () => openMarker(m.id)).addTo(mineLayer);
   }
 }
@@ -656,12 +676,14 @@ function openMarkerForm(id, lat, lon) {
   const m = id ? myMarkers.find(x => x.id === id) : null;
   const name = m ? m.name : 'Saved spot ' + (myMarkers.length + 1);
   const cat = m ? m.cat : 'general';
+  const dateVal = m ? (m.date || isoDate(new Date(m.created))) : todayISO();
   const catRadios = Object.entries(CATS).map(([k, c]) =>
     `<label><input type="radio" name="mkcat" value="${k}" ${k === cat ? 'checked' : ''}> ${c.emoji} ${c.label}</label>`).join('');
   document.getElementById('detailBody').innerHTML = `<h2>${m ? 'Edit marker' : 'Save marker'}</h2>
     <p class="sub">${(m ? m.lat : lat).toFixed(5)}, ${(m ? m.lon : lon).toFixed(5)}</p>
     <form class="mk-form" id="mkForm">
       <label for="mkName">Name</label><input type="text" id="mkName" maxlength="80" value="${esc(name)}" required>
+      <label for="mkDate">Date observed</label><input type="date" id="mkDate" value="${esc(dateVal)}" max="${todayISO()}">
       <label>Category</label><div class="mk-cats">${catRadios}</div>
       <label for="mkType">Type (optional)</label><select id="mkType"></select>
       <label for="mkNotes">Notes (optional)</label><textarea id="mkNotes" maxlength="2000" placeholder="Anything worth remembering…">${m ? esc(m.notes || '') : ''}</textarea>
@@ -682,7 +704,8 @@ function openMarkerForm(id, lat, lon) {
     const rec = {
       name: document.getElementById('mkName').value.trim() || name,
       cat: (document.querySelector('input[name=mkcat]:checked') || {}).value || 'general',
-      type: typeSel.value || '', notes: document.getElementById('mkNotes').value.trim(), updated: Date.now()
+      type: typeSel.value || '', notes: document.getElementById('mkNotes').value.trim(), updated: Date.now(),
+      date: document.getElementById('mkDate').value || ''
     };
     let target;
     if (m) { Object.assign(m, rec); target = m; }
@@ -701,6 +724,7 @@ function openMarker(id) {
   const d = t => new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
   document.getElementById('detailBody').innerHTML = `<span class="badge">${c.emoji} ${esc(c.label)}${m.type ? ' · ' + esc(m.type) : ''}</span>
     <h2>${esc(m.name)}</h2>
+    ${m.date ? `<p class="mk-date">📅 Observed ${obsDate(m.date)}</p>` : ''}
     <p class="sub">${m.lat.toFixed(5)}, ${m.lon.toFixed(5)} · saved ${d(m.created)}${m.updated && m.updated - m.created > 60000 ? ', updated ' + d(m.updated) : ''}</p>
     ${m.notes ? `<div class="mk-notes">${esc(m.notes)}</div>` : '<p class="layer-note">No notes yet. Tap Edit to add some.</p>'}
     <div class="mk-actions">
@@ -725,6 +749,24 @@ function openMarker(id) {
 }
 function syncLayerBox(kind) { const cb = document.querySelector(`[data-layer="${kind}"]`); if (cb) cb.checked = !!(overlayLayers[kind] || accessLayers[kind])._map; }
 drawMine();
+
+
+// Legend collapse: starts collapsed on phones, open on computers; remembers your choice
+(function () {
+  const lg = document.getElementById('legend');
+  let pref = null;
+  try { pref = localStorage.getItem('legend-collapsed'); } catch (e) { }
+  const collapsed = pref === null ? window.matchMedia('(max-width: 640px)').matches : pref === '1';
+  lg.classList.toggle('collapsed', collapsed);
+  lg.addEventListener('click', e => {
+    const btn = e.target.closest('.legend-toggle');
+    if (!btn) return;
+    const now = !lg.classList.contains('collapsed');
+    lg.classList.toggle('collapsed', now);
+    btn.setAttribute('aria-expanded', !now);
+    try { localStorage.setItem('legend-collapsed', now ? '1' : '0'); } catch (e) { }
+  });
+})();
 
 function updateWetNote() {
   document.getElementById('wetZoomNote').style.display = map.getZoom() < WET_MIN_ZOOM ? '' : 'none';
