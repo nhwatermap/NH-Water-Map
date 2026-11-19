@@ -107,6 +107,21 @@ main{position:relative;flex:1;min-height:0}
 .mk-form input[type=date]{width:100%;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:.45rem .6rem;color-scheme:inherit}
 .mk-pin{width:30px;height:38px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.45))}
 .mk-lockbadge{font-size:.8rem;color:var(--muted)}
+.add-btn.alt{background:var(--panel);color:var(--ink);border:1px solid var(--line)}
+.chips{display:flex;flex-wrap:wrap;gap:.4rem;margin:.6rem 0 .8rem}
+.chips button{font:inherit;font-size:.85rem;border:1px solid var(--line);background:transparent;color:var(--ink);border-radius:999px;padding:.3rem .7rem;cursor:pointer}
+.chips button[aria-pressed="true"]{background:var(--accent);color:var(--panel);border-color:var(--accent)}
+.spot-list{list-style:none;margin:0 0 1rem;padding:0}
+.spot-list button{all:unset;box-sizing:border-box;display:flex;gap:.6rem;align-items:flex-start;width:100%;padding:.55rem .3rem;border-top:1px solid var(--line);cursor:pointer}
+.spot-list button:hover{background:color-mix(in srgb, var(--accent) 10%, transparent)}
+.spot-list button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.spot-list .em{font-size:1.15rem;line-height:1.2}
+.spot-list b{display:block}
+.spot-list small{color:var(--muted)}
+.qr-box{background:#fff;padding:12px;border-radius:10px;width:min(260px,100%);margin:.6rem 0}
+.qr-box svg{display:block;width:100%;height:auto}
+.link-box{width:100%;font:inherit;font-size:.8rem;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:.45rem .5rem}
+
 
 .wet-swatch{width:22px;height:22px;border-radius:4px;overflow:hidden;display:flex;flex-direction:column;flex:none;margin-top:.05rem;border:1.5px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4)}
 .wet-swatch i{flex:1;background:var(--marsh)}
@@ -189,6 +204,8 @@ main{position:relative;flex:1;min-height:0}
     </div>
   </div>
     <button class="add-btn" id="addBtn">📍 Add marker</button>
+    <button class="add-btn alt" id="listBtn">📋 My spots</button>
+    <input type="file" id="restoreFile" accept=".json,application/json" hidden>
   </div>
   <aside class="detail" id="detail" aria-live="polite">
     <button class="close" id="close" aria-label="Close details">×</button>
@@ -202,6 +219,7 @@ main{position:relative;flex:1;min-height:0}
 </main>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script>
 const STALE_HOURS = 6; // readings older than this show as hollow circles (often ice)
 let sites = [];
@@ -493,7 +511,7 @@ const WetlandLayer = L.TileLayer.extend({
 });
 const wetlands = new WetlandLayer('', { tileSize: 256, minZoom: WET_MIN_ZOOM, maxZoom: 18, opacity: 1,
   attribution: 'Wetlands: U.S. Fish &amp; Wildlife Service NWI' });
-map.attributionControl.addAttribution('Page v19 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
+map.attributionControl.addAttribution('Page v20 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
 // A slow or failed square is retried up to twice (after 2 s, then 5 s). We never switch to the
 // server's standard green colors; a square that still fails just stays blank.
 wetlands.on('tileerror', e => {
@@ -739,6 +757,7 @@ function openMarker(id) {
       <button id="mkLock" aria-pressed="${!m.locked}">${m.locked ? '🔒 Locked' : '🔓 Unlocked'}</button>
       ${m.locked ? '' : '<button class="primary" id="mkMove">Move</button>'}
       <button id="mkEdit">Edit</button>
+      <button id="mkShare">Share</button>
       <button class="danger" id="mkDel">Delete</button>
     </div>
     <p class="mk-lockbadge">${m.locked ? 'Locked markers can’t be moved. Tap the lock to allow moving.' : 'Unlocked: tap Move to reposition it. It locks again after moving.'}</p>
@@ -747,6 +766,7 @@ function openMarker(id) {
   const mv = document.getElementById('mkMove');
   if (mv) mv.onclick = () => { map.setView([m.lat, m.lon], Math.max(map.getZoom(), 14)); startPlacing({ moveId: id }); };
   document.getElementById('mkEdit').onclick = () => openMarkerForm(id);
+  document.getElementById('mkShare').onclick = () => openShare([m], 'Share “' + m.name + '”');
   document.getElementById('mkDel').onclick = () => {
     if (confirm(`Delete “${m.name}”? This can’t be undone.`)) {
       myMarkers = myMarkers.filter(x => x.id !== id); saveMarkers(); drawMine();
@@ -789,6 +809,165 @@ drawMine();
     if (attr.classList.contains('compact')) { e.preventDefault(); attr.classList.remove('compact'); }
     else if (!e.target.closest('a')) attr.classList.add('compact');
   });
+})();
+
+
+// ---------- My spots list, sharing (QR code / link) and backup ----------
+const CAT_CODE = { hunting: 'h', fishing: 'f', boating: 'b', general: 'g' };
+const CODE_CAT = { h: 'hunting', f: 'fishing', b: 'boating', g: 'general' };
+const QR_MAX = 1500; // longer links make QR codes too dense to scan reliably from a screen
+function toB64url(bytes) {
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 8192) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192));
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function fromB64url(str) {
+  str = str.replace(/-/g, '+').replace(/_/g, '/');
+  while (str.length % 4) str += '=';
+  return Uint8Array.from(atob(str), c => c.charCodeAt(0));
+}
+async function packMarkers(list) {
+  const json = JSON.stringify({ v: 1, m: list.map(m => [m.name, CAT_CODE[m.cat] || 'g', m.type || '', m.notes || '', +(+m.lat).toFixed(5), +(+m.lon).toFixed(5), m.date || '']) });
+  const bytes = new TextEncoder().encode(json);
+  if (window.CompressionStream) {
+    const out = await new Response(new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate-raw'))).arrayBuffer();
+    return 'z' + toB64url(new Uint8Array(out));
+  }
+  return 'j' + toB64url(bytes);
+}
+async function unpackMarkers(str) {
+  let bytes = fromB64url(str.slice(1));
+  if (str[0] === 'z') bytes = new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer());
+  const data = JSON.parse(new TextDecoder().decode(bytes));
+  return (data.m || []).filter(r => Array.isArray(r) && isFinite(r[4]) && isFinite(r[5])).map(r => ({
+    name: String(r[0] || 'Shared spot').slice(0, 80), cat: CODE_CAT[r[1]] || 'general', type: String(r[2] || '').slice(0, 40),
+    notes: String(r[3] || '').slice(0, 2000), lat: +r[4], lon: +r[5], date: /^\d{4}-\d{2}-\d{2}$/.test(r[6] || '') ? r[6] : ''
+  }));
+}
+const pageBase = () => location.origin + location.pathname;
+const spotDate = m => m.date || isoDate(new Date(m.created || Date.now()));
+const sortSpots = list => list.slice().sort((a, b) => spotDate(b).localeCompare(spotDate(a)));
+
+let spotFilter = 'all';
+function openMyList() {
+  const counts = { all: myMarkers.length };
+  for (const m of myMarkers) counts[m.cat] = (counts[m.cat] || 0) + 1;
+  if (spotFilter !== 'all' && !counts[spotFilter]) spotFilter = 'all';
+  const shown = sortSpots(myMarkers.filter(m => spotFilter === 'all' || m.cat === spotFilter));
+  const chip = (k, label) => counts[k] ? `<button data-f="${k}" aria-pressed="${spotFilter === k}">${label} (${counts[k]})</button>` : '';
+  const chips = chip('all', 'All') + Object.entries(CATS).map(([k, c]) => chip(k, c.emoji + ' ' + c.label.split(' /')[0])).join('');
+  const rows = shown.map(m => {
+    const c = CATS[m.cat] || CATS.general;
+    return `<li><button data-id="${m.id}"><span class="em" aria-hidden="true">${c.emoji}</span><span><b>${esc(m.name)}</b><small>${m.date ? obsDate(m.date) : 'No date'}${m.type ? ' · ' + esc(m.type) : ''}</small></span></button></li>`;
+  }).join('');
+  document.getElementById('detailBody').innerHTML = `<h2>My spots</h2>
+    ${myMarkers.length ? `<div class="chips" role="group" aria-label="Filter by category">${chips}</div>
+      <ul class="spot-list">${rows}</ul>
+      <div class="mk-actions"><button class="primary" id="shareShown">Share ${shown.length === myMarkers.length ? 'all' : 'these'} (${shown.length})</button></div>`
+      : '<p>No saved spots yet. Tap <b>Add marker</b> to save your first one.</p>'}
+    <div class="mk-actions"><button id="backupBtn" ${myMarkers.length ? '' : 'disabled'}>Back up to file</button><button id="restoreBtn">Restore from file</button></div>
+    <p class="layer-note">Your spots are saved only in this browser. Use Share to send them to your phone or a friend, and back up to a file now and then for safekeeping.</p>`;
+  document.querySelectorAll('.chips button').forEach(b => b.onclick = () => { spotFilter = b.dataset.f; openMyList(); });
+  document.querySelectorAll('.spot-list button').forEach(b => b.onclick = () => {
+    const m = myMarkers.find(x => x.id === b.dataset.id);
+    if (!m) return;
+    if (!mineLayer._map) { setLayer('mine', true); syncLayerBox('mine'); }
+    map.setView([m.lat, m.lon], Math.max(map.getZoom(), 14));
+    openMarker(m.id);
+  });
+  const sh = document.getElementById('shareShown');
+  if (sh) sh.onclick = () => openShare(shown, `Share ${shown.length} spot${shown.length === 1 ? '' : 's'}`);
+  document.getElementById('backupBtn').onclick = backupToFile;
+  document.getElementById('restoreBtn').onclick = () => document.getElementById('restoreFile').click();
+  document.getElementById('detail').classList.add('show');
+}
+document.getElementById('listBtn').addEventListener('click', openMyList);
+
+async function openShare(list, title) {
+  const body = document.getElementById('detailBody');
+  body.innerHTML = `<h2>${esc(title)}</h2><p class="sub">Preparing…</p>`;
+  document.getElementById('detail').classList.add('show');
+  let link;
+  try { link = pageBase() + '#import=' + await packMarkers(list); }
+  catch (e) { body.innerHTML = `<h2>${esc(title)}</h2><p>Sorry, this browser couldn’t prepare the share link.</p>`; return; }
+  let qr = '';
+  if (link.length <= QR_MAX && window.qrcode) {
+    try { const q = qrcode(0, 'L'); q.addData(link); q.make(); qr = q.createSvgTag({ cellSize: 4, margin: 2, scalable: true }); } catch (e) { qr = ''; }
+  }
+  body.innerHTML = `<h2>${esc(title)}</h2>
+    ${qr ? `<p>Scan with your phone’s camera to add ${list.length === 1 ? 'this spot' : 'these ' + list.length + ' spots'} to the map on that phone.</p><div class="qr-box" role="img" aria-label="QR code">${qr}</div>`
+         : `<p>That’s too many spots to fit in one QR code. Send the link instead, or filter the list to fewer spots.</p>`}
+    <label class="layer-note" for="shareLink">Or send this link:</label>
+    <input class="link-box" id="shareLink" readonly value="${esc(link)}">
+    <div class="mk-actions">${navigator.share ? '<button class="primary" id="nativeShare">Share…</button>' : ''}<button id="copyLink">Copy link</button><button id="shareBack">Back</button></div>
+    <p class="layer-note">The spots travel inside the link itself; nothing is uploaded anywhere. Anyone with the link can add these spots, so only send it to people you trust with them.</p>`;
+  const ns = document.getElementById('nativeShare');
+  if (ns) ns.onclick = () => navigator.share({ title: 'Spots from NH Water Conditions', text: list.length === 1 ? list[0].name : list.length + ' saved spots', url: link }).catch(() => { });
+  document.getElementById('copyLink').onclick = async e => {
+    try { await navigator.clipboard.writeText(link); e.target.textContent = 'Copied!'; }
+    catch (err) { const el = document.getElementById('shareLink'); el.select(); document.execCommand && document.execCommand('copy'); e.target.textContent = 'Copied!'; }
+  };
+  document.getElementById('shareBack').onclick = () => list.length === 1 && myMarkers.some(x => x.id === list[0].id) ? openMarker(list[0].id) : openMyList();
+}
+
+function showImport(list, source) {
+  const near = (a, b) => Math.abs(a.lat - b.lat) < 0.0001 && Math.abs(a.lon - b.lon) < 0.0001 && a.name.trim().toLowerCase() === b.name.trim().toLowerCase();
+  const fresh = list.filter(n => !myMarkers.some(m => near(m, n)));
+  const dupes = list.length - fresh.length;
+  const rows = fresh.slice(0, 60).map(m => `<li><button disabled><span class="em" aria-hidden="true">${(CATS[m.cat] || CATS.general).emoji}</span><span><b>${esc(m.name)}</b><small>${m.date ? obsDate(m.date) : 'No date'}${m.type ? ' · ' + esc(m.type) : ''}</small></span></button></li>`).join('');
+  document.getElementById('detailBody').innerHTML = fresh.length
+    ? `<h2>Add ${fresh.length} spot${fresh.length === 1 ? '' : 's'}?</h2>
+       <p class="sub">From ${esc(source)}${dupes ? ` · ${dupes} you already have will be skipped` : ''}</p>
+       <ul class="spot-list">${rows}</ul>${fresh.length > 60 ? `<p class="layer-note">…and ${fresh.length - 60} more</p>` : ''}
+       <div class="mk-actions"><button class="primary" id="impYes">Add ${fresh.length === 1 ? 'it' : 'them'}</button><button id="impNo">No thanks</button></div>`
+    : `<h2>Nothing new to add</h2><p>You already have ${list.length === 1 ? 'this spot' : 'all ' + list.length + ' of these spots'}.</p><div class="mk-actions"><button id="impNo">OK</button></div>`;
+  document.getElementById('detail').classList.add('show');
+  const yes = document.getElementById('impYes');
+  if (yes) yes.onclick = () => {
+    const now = Date.now();
+    fresh.forEach((m, i) => myMarkers.push({ ...m, id: 'm' + (now + i).toString(36) + Math.random().toString(36).slice(2, 6), locked: true, created: now, updated: now }));
+    if (!saveMarkers()) return;
+    if (!mineLayer._map) { setLayer('mine', true); syncLayerBox('mine'); }
+    drawMine();
+    const b = L.latLngBounds(fresh.map(m => [m.lat, m.lon]));
+    map.fitBounds(b.pad(0.3), { maxZoom: 14 });
+    openMyList();
+  };
+  document.getElementById('impNo').onclick = () => document.getElementById('detail').classList.remove('show');
+}
+
+function backupToFile() {
+  const data = { app: 'nh-water-map', kind: 'markers', version: 1, exported: new Date().toISOString(), markers: myMarkers };
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 1)], { type: 'application/json' }));
+  a.download = 'my-spots-' + todayISO() + '.json';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+document.getElementById('restoreFile').addEventListener('change', async e => {
+  const f = e.target.files && e.target.files[0];
+  e.target.value = '';
+  if (!f) return;
+  try {
+    const data = JSON.parse(await f.text());
+    const list = (Array.isArray(data) ? data : data.markers || []).filter(m => m && isFinite(m.lat) && isFinite(m.lon)).map(m => ({
+      name: String(m.name || 'Saved spot').slice(0, 80), cat: CATS[m.cat] ? m.cat : 'general', type: String(m.type || '').slice(0, 40),
+      notes: String(m.notes || '').slice(0, 2000), lat: +m.lat, lon: +m.lon, date: /^\d{4}-\d{2}-\d{2}$/.test(m.date || '') ? m.date : ''
+    }));
+    if (!list.length) throw new Error('no spots');
+    showImport(list, 'backup file “' + f.name + '”');
+  } catch (err) { alert('That file doesn’t look like a spots backup from this map.'); }
+});
+
+// Opening a shared link: offer to add its spots
+(async function checkImportLink() {
+  if (!location.hash.startsWith('#import=')) return;
+  const code = location.hash.slice('#import='.length);
+  history.replaceState(null, '', location.pathname + location.search);
+  try {
+    const list = await unpackMarkers(code);
+    if (list.length) showImport(list, 'a shared link');
+  } catch (e) { alert('That shared link looks incomplete or damaged. Ask for it to be sent again.'); }
 })();
 
 function updateWetNote() {
