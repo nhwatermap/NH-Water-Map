@@ -86,6 +86,20 @@ main{position:relative;flex:1;min-height:0}
 .layer-row b{display:block;font-weight:600}
 .layer-row small{display:block;color:var(--muted);font-size:.8rem;line-height:1.3}
 .layer-note{color:var(--muted);font-size:.75rem;margin:.35rem 0 0;line-height:1.3}
+.wx-swatch{width:22px;height:22px;border-radius:4px;flex:none;margin-top:.05rem;border:1.5px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4);background:linear-gradient(135deg,#2c63d1,#a9d8f2 40%,#f4f9fb 50%,#ffd36e 65%,#f2542d)}
+.daybar{position:absolute;left:50%;transform:translateX(-50%);bottom:1rem;z-index:620;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:.5rem .7rem;width:min(460px,calc(100% - 1rem));box-shadow:0 2px 8px rgba(0,0,0,.3);display:none}
+.wx-on .daybar{display:block}
+.wx-on .busy{bottom:9.2rem}
+.daybar-row{display:flex;align-items:center;gap:.5rem}
+.daybar-row input[type=range]{flex:1;accent-color:var(--accent)}
+.daybar-row button{font:inherit;border:1px solid var(--line);background:transparent;color:var(--ink);border-radius:6px;padding:.15rem .5rem;cursor:pointer}
+.daybar-info{justify-content:space-between;font-size:.9rem;margin-top:.2rem}
+.daybar-info span{color:var(--muted);font-size:.8rem;flex:1}
+.wx-scale{display:grid;grid-template-columns:repeat(7,1fr);font-size:.7rem;color:var(--muted);margin-top:.35rem;position:relative;padding-top:10px}
+.wx-scale i{position:absolute;left:0;right:0;top:0;height:7px;border-radius:4px;background:linear-gradient(90deg,#3b3fb0 0%,#2c63d1 12%,#3d8fe0 25%,#a9d8f2 40%,#f4f9fb 50%,#fff3b0 55%,#ffd36e 65%,#ff9a3c 80%,#f2542d 100%)}
+.wx-scale span:last-child{text-align:right}
+@media (max-width:640px){.daybar{bottom:3.3rem}.wx-on .busy{bottom:11.5rem}}
+
 .land-swatch{width:22px;height:22px;border-radius:4px;overflow:hidden;display:flex;flex-direction:column;flex:none;margin-top:.05rem;border:1.5px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4)}
 .land-swatch i{flex:1}
 .land-swatch .wma,.key.lk-wma{background:#5b4bb7}
@@ -267,6 +281,17 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:1rem 0}
       <p class="layer-note">Public land from NH GRANIT, updated by the state about twice a year. Private land under conservation easements isn’t shown, since it’s usually not open to the public. Tap a parcel for details.</p>
     </div>
   </div>
+  <div class="layers" id="wxLayers">
+    <button class="menu-btn" aria-expanded="false" aria-controls="wxBody"><span>⛅ Weather</span><span aria-hidden="true">▾</span></button>
+    <div class="layers-body" id="wxBody">
+      <label class="layer-row"><input type="checkbox" data-layer="wxtemp"><span class="wx-swatch" aria-hidden="true"></span><span><b>Temperature</b><small>A color wash from deep blue (hard freeze) through white (about 32 °F) to orange and red. Use the day slider to go 5 days back or 5 days ahead.</small></span></label>
+      <fieldset class="map-style" id="wxShow"><legend>Show</legend>
+        <label><input type="radio" name="wxshow" value="tmin" checked> Overnight low</label>
+        <label><input type="radio" name="wxshow" value="tmax"> Daytime high</label>
+      </fieldset>
+      <p class="layer-note">Weather from NOAA’s GFS model: what happened over the past 5 days and the forecast for the next 5, updated twice a day. Forecasts get less certain further out. Tap the map for that spot’s weather.</p>
+    </div>
+  </div>
     <button class="add-btn" id="addBtn">📍 Add marker</button>
     <button class="add-btn alt" id="listBtn">📋 My spots</button>
     <input type="file" id="restoreFile" accept=".json,application/json" hidden>
@@ -275,6 +300,15 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:1rem 0}
     <button class="close" id="close" aria-label="Close details">×</button>
     <div id="detailBody"></div>
   </aside>
+  <div class="daybar" id="dayBar" role="group" aria-label="Weather day">
+    <div class="daybar-row">
+      <button id="dayPrev" aria-label="Previous day">◀</button>
+      <input type="range" id="dayRange" min="0" max="10" step="1" value="5" aria-label="Day">
+      <button id="dayNext" aria-label="Next day">▶</button>
+    </div>
+    <div class="daybar-row daybar-info"><b id="dayLabel">Today</b><span id="dayKind"></span><button id="dayToday">Today</button></div>
+    <div class="wx-scale" aria-hidden="true"><i></i><span>0</span><span>10</span><span>20</span><span>32</span><span>40</span><span>50</span><span>60 °F</span></div>
+  </div>
   <div class="busy" id="busy" role="status" aria-live="polite"></div>
   <div class="crosshair" aria-hidden="true"><svg viewBox="0 0 44 44" width="44" height="44"><g stroke="#fff" stroke-width="4" stroke-linecap="round"><path d="M22 2v13M22 29v13M2 22h13M29 22h13"/><circle cx="22" cy="22" r="1.6" fill="#fff"/></g><g stroke="#c0392b" stroke-width="2" stroke-linecap="round"><path d="M22 2v13M22 29v13M2 22h13M29 22h13"/></g><circle cx="22" cy="22" r="1.4" fill="#c0392b"/></svg></div>
   <div class="place-bar" id="placeBar" role="dialog" aria-label="Place marker">
@@ -647,7 +681,7 @@ const WetlandLayer = L.TileLayer.extend({
 });
 const wetlands = new WetlandLayer('', { tileSize: 256, minZoom: WET_MIN_ZOOM, maxZoom: 18, opacity: 1,
   attribution: 'Wetlands: U.S. Fish &amp; Wildlife Service NWI' });
-map.attributionControl.addAttribution('Page v33 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
+map.attributionControl.addAttribution('Page v34 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
 // A slow or failed square is retried up to twice (after 2 s, then 5 s). We never switch to the
 // server's standard green colors; a square that still fails just stays blank.
 wetlands.on('tileerror', e => {
@@ -969,8 +1003,9 @@ async function landInfo(latlng) {
 map.on('click', async e => {
   if (placing) return;
   const [land, wet] = await Promise.all([landInfo(e.latlng), wetlandInfo(e.latlng)]);
-  if (!land && !wet) return;
-  document.getElementById('detailBody').innerHTML = [wet, land].filter(Boolean).join('<hr class="sep">') +
+  const weather = weatherInfo(e.latlng);
+  if (!land && !wet && !weather) return;
+  document.getElementById('detailBody').innerHTML = [wet, land, weather].filter(Boolean).join('<hr class="sep">') +
     `<div class="mk-actions"><button class="primary" id="spotMark">📍 Mark this spot</button></div>`;
   document.getElementById('spotMark').onclick = () => { map.panTo(e.latlng); startPlacing(); };
   document.getElementById('detail').classList.add('show');
@@ -1531,6 +1566,123 @@ BASEMAPS.usgsSat.eachLayer(l => watchLoading(l, 'sat', 'Loading satellite imager
 document.querySelector('[data-layer="wetlands"]').addEventListener('change', e => {
   if (e.target.checked && map.getZoom() < WET_MIN_ZOOM) flashHint('Zoom in closer to see wetland shading');
 });
+
+
+// ---------- Weather (NOAA GFS via weather.json, collected twice a day) ----------
+let wx = null, wxP = null, wxDay = 5, wxShow = 'tmin';
+function loadWx() {
+  return wxP || (wxP = fetch('weather.json?v=' + Date.now()).then(r => { if (!r.ok) throw new Error('no weather yet'); return r.json(); })
+    .then(d => { wx = d; wxDay = Math.max(0, d.days.findIndex(x => x.kind === 'today')); setupDayBar(); return d; })
+    .catch(e => { wxP = null; throw e; }));
+}
+// Value of a weather field at a spot, blended from the four nearest grid points
+function wxAt(field, day, lat, lon) {
+  const g = wx.grid, arr = wx.fields[field][day], M = wx.missing;
+  const fi = (lat - g.lat0) / g.dlat, fj = (lon - g.lon0) / g.dlon;
+  if (fi < 0 || fj < 0 || fi > g.nlat - 1 || fj > g.nlon - 1) return null;
+  const i = Math.min(Math.floor(fi), g.nlat - 2), j = Math.min(Math.floor(fj), g.nlon - 2), di = fi - i, dj = fj - j;
+  const v00 = arr[i * g.nlon + j], v01 = arr[i * g.nlon + j + 1], v10 = arr[(i + 1) * g.nlon + j], v11 = arr[(i + 1) * g.nlon + j + 1];
+  if (v00 === M || v01 === M || v10 === M || v11 === M) return null;
+  return (v00 * (1 - dj) + v01 * dj) * (1 - di) + (v10 * (1 - dj) + v11 * dj) * di;
+}
+const TEMP_STOPS = [[-10, [75, 29, 122]], [0, [59, 63, 176]], [10, [44, 99, 209]], [20, [61, 143, 224]], [25, [108, 180, 236]],
+  [30, [169, 216, 242]], [32, [244, 249, 251]], [35, [255, 243, 176]], [40, [255, 211, 110]], [50, [255, 154, 60]], [60, [242, 84, 45]], [75, [179, 18, 46]]];
+function tempColor(f) {
+  if (f <= TEMP_STOPS[0][0]) return TEMP_STOPS[0][1];
+  for (let k = 1; k < TEMP_STOPS.length; k++) {
+    const [b, cb] = TEMP_STOPS[k], [a, ca] = TEMP_STOPS[k - 1];
+    if (f <= b) { const t = (f - a) / (b - a); return [0, 1, 2].map(c => Math.round(ca[c] + (cb[c] - ca[c]) * t)); }
+  }
+  return TEMP_STOPS[TEMP_STOPS.length - 1][1];
+}
+const WxTempLayer = L.GridLayer.extend({
+  createTile(coords, done) {
+    const size = this.getTileSize(), cv = document.createElement('canvas');
+    cv.width = size.x; cv.height = size.y;
+    loadWx().then(() => {
+      const N = 32, step = size.x / N, small = document.createElement('canvas');
+      small.width = small.height = N;
+      const sctx = small.getContext('2d'), img = sctx.createImageData(N, N);
+      const W = 256 * Math.pow(2, coords.z), x0 = coords.x * size.x, y0 = coords.y * size.y;
+      for (let py = 0; py < N; py++) {
+        const lat = unY(y0 + (py + .5) * step, W);
+        for (let px = 0; px < N; px++) {
+          const v = wxAt(wxShow, wxDay, lat, unX(x0 + (px + .5) * step, W)), o = (py * N + px) * 4;
+          if (v == null) { img.data[o + 3] = 0; continue; }
+          const c = tempColor(v);
+          img.data[o] = c[0]; img.data[o + 1] = c[1]; img.data[o + 2] = c[2]; img.data[o + 3] = 150;
+        }
+      }
+      sctx.putImageData(img, 0, 0);
+      const ctx = cv.getContext('2d');
+      ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(small, -step / 2, -step / 2, size.x + step, size.y + step);
+      done(null, cv);
+    }).catch(err => done(err, cv));
+    return cv;
+  }
+});
+const wxTemp = new WxTempLayer({ tileSize: 256, zIndex: 2, attribution: 'Weather: NOAA GFS' });
+overlayLayers.wxtemp = wxTemp;
+watchLoading(wxTemp, 'wx', 'Loading weather');
+
+function wxDayText(i) {
+  const d = wx.days[i], [y, m, dd] = d.date.split('-').map(Number);
+  const label = new Date(y, m - 1, dd).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+  const t = wx.days.findIndex(x => x.kind === 'today'), off = i - t;
+  const kind = off === 0 ? 'today' : off < 0 ? `${-off} day${off === -1 ? '' : 's'} ago` : off > 3 ? `forecast, +${off} days (less certain)` : `forecast, +${off} day${off === 1 ? '' : 's'}`;
+  return [label, kind];
+}
+function setupDayBar() {
+  const r = document.getElementById('dayRange');
+  r.max = wx.days.length - 1; r.value = wxDay;
+  updateDayLabel();
+}
+function updateDayLabel() {
+  if (!wx) return;
+  const [label, kind] = wxDayText(wxDay);
+  document.getElementById('dayLabel').textContent = label;
+  document.getElementById('dayKind').textContent = '  ' + kind;
+  document.getElementById('dayRange').value = wxDay;
+}
+function setWxDay(i) {
+  if (!wx) return;
+  wxDay = Math.max(0, Math.min(wx.days.length - 1, i));
+  updateDayLabel();
+  wxTemp.redraw();
+}
+document.getElementById('dayRange').addEventListener('input', e => setWxDay(+e.target.value));
+document.getElementById('dayPrev').onclick = () => setWxDay(wxDay - 1);
+document.getElementById('dayNext').onclick = () => setWxDay(wxDay + 1);
+document.getElementById('dayToday').onclick = () => wx && setWxDay(wx.days.findIndex(x => x.kind === 'today'));
+document.querySelectorAll('input[name=wxshow]').forEach(r => r.addEventListener('change', () => { if (r.checked) { wxShow = r.value; wxTemp.redraw(); } }));
+function syncWxBar() { mainEl.classList.toggle('wx-on', !!wxTemp._map); }
+wxTemp.on('add remove', syncWxBar);
+document.querySelector('[data-layer="wxtemp"]').addEventListener('change', e => {
+  if (e.target.checked) loadWx().catch(() => { flashHint('Weather data isn’t available yet'); e.target.checked = false; setLayer('wxtemp', false); });
+});
+
+// Weather at a tapped spot
+const DIR16 = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+function weatherInfo(latlng) {
+  if (!wx || !wxTemp._map) return null;
+  const lat = latlng.lat, lon = latlng.lng, d = wxDay;
+  const lo = wxAt('tmin', d, lat, lon), hi = wxAt('tmax', d, lat, lon);
+  if (lo == null) return null;
+  const u = wxAt('umean', d, lat, lon) / 10, v = wxAt('vmean', d, lat, lon) / 10, wmax = wxAt('wmax', d, lat, lon);
+  const spd = Math.hypot(u, v), from = (Math.atan2(-u, -v) * 180 / Math.PI + 360) % 360;
+  const snod = wxAt('snod', d, lat, lon) / 10, newsnow = wxAt('newsnow', d, lat, lon) / 10, spct = wxAt('snowpct', d, lat, lon);
+  const [label, kind] = wxDayText(d);
+  const stat = (l, v) => `<div class="stat"><span>${l}</span><b>${v}</b></div>`;
+  return `<span class="badge">Weather · ${esc(label)}</span>
+    <p class="sub">${esc(kind)} · NOAA GFS model, about 15-mile detail</p>
+    <div class="stats">
+      ${stat('Overnight low', Math.round(lo) + ' °F')}${stat('Daytime high', Math.round(hi) + ' °F')}
+      ${stat('Wind (day average)', spd < 1 ? 'Calm' : `from ${DIR16[Math.round(from / 22.5) % 16]} ${Math.round(spd)} mph`)}${stat('Strongest wind', Math.round(wmax) + ' mph')}
+      ${stat('Snow on the ground', snod >= 0.5 ? snod.toFixed(snod < 10 ? 1 : 0) + ' in' : 'None')}${stat('New snow', newsnow >= 0.1 ? newsnow.toFixed(1) + ' in' : spct > 10 ? 'Light' : 'None')}
+    </div>
+    <p class="layer-note">Model values for this area, not a station reading. Forecasts beyond about 3 days are less certain.</p>`;
+}
 
 function updateWetNote() {
   document.getElementById('wetZoomNote').style.display = map.getZoom() < WET_MIN_ZOOM ? '' : 'none';
