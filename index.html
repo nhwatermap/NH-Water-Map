@@ -86,6 +86,13 @@ main{position:relative;flex:1;min-height:0}
 .layer-row b{display:block;font-weight:600}
 .layer-row small{display:block;color:var(--muted);font-size:.8rem;line-height:1.3}
 .layer-note{color:var(--muted);font-size:.75rem;margin:.35rem 0 0;line-height:1.3}
+.mig-swatch{width:22px;height:22px;border-radius:4px;flex:none;margin-top:.05rem;border:1.5px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4);background:linear-gradient(135deg,rgba(27,36,64,.12),rgba(27,36,64,.85))}
+.daybar .mig-scale{display:none;grid-template-columns:auto repeat(4,1fr);gap:0 3px;align-items:end;font-size:.7rem;color:var(--muted);margin-top:.35rem;position:relative;padding-top:10px}
+.wx-mig-on .daybar .mig-scale{display:grid}
+.mig-scale b{font-weight:600;margin-right:.3rem;grid-row:1}
+.mig-scale i{position:absolute;right:0;top:0;height:7px;border-radius:4px;left:9.5em;background:linear-gradient(90deg,rgba(27,36,64,.05),rgba(27,36,64,.35) 35%,rgba(27,36,64,.6) 65%,rgba(27,36,64,.8))}
+.mig-scale span{text-align:center}
+
 .snow-swatch{width:22px;height:22px;border-radius:4px;flex:none;margin-top:.05rem;border:1.5px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4);background:radial-gradient(circle at 30% 35%,#fff 0 1.6px,transparent 2px),radial-gradient(circle at 70% 65%,#fff 0 1.6px,transparent 2px),linear-gradient(135deg,#d6d0fa,#7056cc)}
 .daybar .snow-scale{display:none;grid-template-columns:auto repeat(6,1fr);gap:3px;align-items:center;font-size:.7rem;margin-top:.35rem}
 .wx-snow-on .daybar .snow-scale{display:grid}
@@ -105,6 +112,8 @@ main{position:relative;flex:1;min-height:0}
 .wx-on .daybar{display:block}
 .wx-on .busy{bottom:9.2rem}
 .wx-snow-on .busy{bottom:11rem}
+.wx-mig-on .busy{bottom:11rem}
+.wx-mig-on.wx-snow-on .busy{bottom:12.8rem}
 .daybar-row{display:flex;align-items:center;gap:.5rem}
 .daybar-row input[type=range]{flex:1;accent-color:var(--accent)}
 .daybar-row button{font:inherit;border:1px solid var(--line);background:transparent;color:var(--ink);border-radius:6px;padding:.15rem .5rem;cursor:pointer}
@@ -299,6 +308,7 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:1rem 0}
   <div class="layers" id="wxLayers">
     <button class="menu-btn" aria-expanded="false" aria-controls="wxBody"><span>⛅ Weather</span><span aria-hidden="true">▾</span></button>
     <div class="layers-body" id="wxBody">
+      <label class="layer-row"><input type="checkbox" data-layer="wxmig"><span class="mig-swatch" aria-hidden="true"></span><span><b>Migration conditions</b><small>Darker where cold nights, snow and a north-northwest tailwind line up. Shows conditions, not where birds are.</small><button class="info-btn" type="button" aria-expanded="false" data-info>ⓘ What’s this for?</button><small class="info-text" hidden>Migration conditions combine three things that tend to push waterfowl south: freeze pressure (nights at 25 °F or colder over the last 3 nights, and highs at or below 35 °F, when shallow water locks up), snow (fresh snow in the last 2 days and snow on the ground), and a tailwind from the north to northwest. Freeze counts most, snow adds, and the tailwind counts more where it’s already cold. It shows environmental pressure, not where birds are or will be. Use it as one clue alongside your own scouting.</small></span></label>
       <label class="layer-row"><input type="checkbox" data-layer="wxtemp"><span class="wx-swatch" aria-hidden="true"></span><span><b>Temperature</b><small>A color wash from deep blue (hard freeze) through white (about 32 °F) to orange and red. Use the day slider to go 5 days back or 5 days ahead.</small></span></label>
       <label class="layer-row"><input type="checkbox" data-layer="wxwind"><span class="wind-swatch" aria-hidden="true"><i></i><i></i><i></i></span><span><b>Wind</b><small>Streaks drift with each day’s average wind. Faster wind = faster, darker streaks. Tap the map for direction and speed.</small></span></label>
       <label class="layer-row"><input type="checkbox" data-layer="wxsnow"><span class="snow-swatch" aria-hidden="true"></span><span><b>Snow</b><small>Lavender to purple: snow on the ground (deeper = darker). White flakes: fresh snow that day.</small></span></label>
@@ -324,6 +334,7 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:1rem 0}
       <button id="dayNext" aria-label="Next day">▶</button>
     </div>
     <div class="daybar-row daybar-info"><b id="dayLabel">Today</b><span id="dayKind"></span><button id="dayToday">Today</button></div>
+    <div class="mig-scale" aria-hidden="true"><b>Migration conditions</b><i></i><span>Low</span><span>Moderate</span><span>High</span><span>Very high</span></div>
     <div class="snow-scale" aria-hidden="true"><b>Snow on ground</b><span style="background:rgba(214,208,250,.75)">1″</span><span style="background:rgba(184,170,240,.85)">3″</span><span style="background:rgba(150,128,226,.9);color:#fff">6″</span><span style="background:rgba(112,86,204,.92);color:#fff">12″</span><span style="background:rgba(76,52,170,.95);color:#fff">24″+</span><span class="flake">✻ fresh</span></div>
     <div class="wx-scale" aria-hidden="true"><i></i><span>0</span><span>10</span><span>20</span><span>32</span><span>40</span><span>50</span><span>60 °F</span></div>
   </div>
@@ -699,7 +710,7 @@ const WetlandLayer = L.TileLayer.extend({
 });
 const wetlands = new WetlandLayer('', { tileSize: 256, minZoom: WET_MIN_ZOOM, maxZoom: 18, opacity: 1,
   attribution: 'Wetlands: U.S. Fish &amp; Wildlife Service NWI' });
-map.attributionControl.addAttribution('Page v36 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
+map.attributionControl.addAttribution('Page v37 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
 // A slow or failed square is retried up to twice (after 2 s, then 5 s). We never switch to the
 // server's standard green colors; a square that still fails just stays blank.
 wetlands.on('tileerror', e => {
@@ -1021,9 +1032,9 @@ async function landInfo(latlng) {
 map.on('click', async e => {
   if (placing) return;
   const [land, wet] = await Promise.all([landInfo(e.latlng), wetlandInfo(e.latlng)]);
-  const weather = weatherInfo(e.latlng);
-  if (!land && !wet && !weather) return;
-  document.getElementById('detailBody').innerHTML = [wet, land, weather].filter(Boolean).join('<hr class="sep">') +
+  const weather = weatherInfo(e.latlng), mig = migrationInfo(e.latlng);
+  if (!land && !wet && !weather && !mig) return;
+  document.getElementById('detailBody').innerHTML = [mig, wet, land, weather].filter(Boolean).join('<hr class="sep">') +
     `<div class="mk-actions"><button class="primary" id="spotMark">📍 Mark this spot</button></div>`;
   document.getElementById('spotMark').onclick = () => { map.panTo(e.latlng); startPlacing(); };
   document.getElementById('detail').classList.add('show');
@@ -1677,6 +1688,7 @@ function setWxDay(i) {
   wxTemp.redraw();
   if (typeof wxWind !== 'undefined') wxWind.refresh();
   if (typeof wxSnow !== 'undefined' && wxSnow._map) { wxSnow.redraw(); snowHint(); }
+  if (typeof wxMig !== 'undefined' && wxMig._map) wxMig.redraw();
 }
 document.getElementById('dayRange').addEventListener('input', e => setWxDay(+e.target.value));
 document.getElementById('dayPrev').onclick = () => setWxDay(wxDay - 1);
@@ -1685,7 +1697,9 @@ document.getElementById('dayToday').onclick = () => wx && setWxDay(wx.days.findI
 document.querySelectorAll('input[name=wxshow]').forEach(r => r.addEventListener('change', () => { if (r.checked) { wxShow = r.value; wxTemp.redraw(); } }));
 function syncWxBar() {
   const windOn = typeof wxWind !== 'undefined' && !!wxWind._map, snowOn = typeof wxSnow !== 'undefined' && !!wxSnow._map;
-  mainEl.classList.toggle('wx-on', !!wxTemp._map || windOn || snowOn);
+  const migOn = typeof wxMig !== 'undefined' && !!wxMig._map;
+  mainEl.classList.toggle('wx-on', !!wxTemp._map || windOn || snowOn || migOn);
+  mainEl.classList.toggle('wx-mig-on', migOn);
   mainEl.classList.toggle('wx-snow-on', snowOn);
   mainEl.classList.toggle('wx-temp-on', !!wxTemp._map);
 }
@@ -1697,7 +1711,7 @@ document.querySelector('[data-layer="wxtemp"]').addEventListener('change', e => 
 // Weather at a tapped spot
 const DIR16 = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
 function weatherInfo(latlng) {
-  if (!wx || !(wxTemp._map || (typeof wxWind !== 'undefined' && wxWind._map) || (typeof wxSnow !== 'undefined' && wxSnow._map))) return null;
+  if (!wx || !(wxTemp._map || (typeof wxWind !== 'undefined' && wxWind._map) || (typeof wxSnow !== 'undefined' && wxSnow._map) || (typeof wxMig !== 'undefined' && wxMig._map))) return null;
   const lat = latlng.lat, lon = latlng.lng, d = wxDay;
   const lo = wxAt('tmin', d, lat, lon), hi = wxAt('tmax', d, lat, lon);
   if (lo == null) return null;
@@ -1869,6 +1883,88 @@ wxSnow.on('add', () => loadWx().then(snowHint).catch(() => {}));
 document.querySelector('[data-layer="wxsnow"]').addEventListener('change', e => {
   if (e.target.checked) loadWx().catch(() => { flashHint('Weather data isn’t available yet'); e.target.checked = false; setLayer('wxsnow', false); });
 });
+
+
+// ---------- Migration conditions: freeze + snow + north-northwest tailwind ----------
+const clamp01 = x => Math.max(0, Math.min(1, x));
+function migParts(day, lat, lon) {
+  const lo = wxAt('tmin', day, lat, lon), hi = wxAt('tmax', day, lat, lon);
+  if (lo == null || hi == null) return null;
+  // Freeze: each of the last 3 nights counts from 32 °F (nothing) to 25 °F or colder (full)
+  let nights = 0, sum = 0, run = 0, counting = true;
+  for (let k = 0; k < 3; k++) {
+    const t = day - k >= 0 ? wxAt('tmin', day - k, lat, lon) : null;
+    if (t == null) continue;
+    nights++; sum += clamp01((32 - t) / 7);
+    if (counting && t <= 25) run++; else counting = false;
+  }
+  const highs = clamp01((40 - hi) / 5);                        // 40 °F nothing … 35 °F or colder full
+  const freeze = clamp01(0.75 * (nights ? sum / nights : 0) + 0.25 * highs);
+  // Snow: fresh snow over the last 2 days (full at 3 in) or snow on the ground (full at 6 in)
+  const fresh = Math.max(wxAt('newsnow', day, lat, lon) || 0, day > 0 ? (wxAt('newsnow', day - 1, lat, lon) || 0) : 0) / 10;
+  const depth = (wxAt('snod', day, lat, lon) || 0) / 10;
+  const snow = clamp01(Math.max(fresh / 3, depth / 6 * 0.8));
+  // Tailwind: how much of the day's wind pushes toward the south-southeast (from the north-northwest)
+  const u = (wxAt('umean', day, lat, lon) || 0) / 10, v = (wxAt('vmean', day, lat, lon) || 0) / 10;
+  const push = u * 0.383 - v * 0.924;                         // mph toward 157.5°
+  const tail = clamp01((push - 8) / 12);
+  const cold = Math.max(freeze, snow * 0.8);
+  const score = clamp01(0.55 * freeze + 0.2 * snow + 0.25 * tail * (0.5 + 0.5 * cold));
+  return { score, freeze, snow, tail, run, lo, hi, fresh, depth, u, v };
+}
+const migLevel = s => s >= 0.7 ? 'Very high' : s >= 0.45 ? 'High' : s >= 0.2 ? 'Moderate' : 'Low';
+const WxMigLayer = L.GridLayer.extend({
+  createTile(coords, done) {
+    const size = this.getTileSize(), cv = document.createElement('canvas');
+    cv.width = size.x; cv.height = size.y;
+    loadWx().then(() => {
+      const N = 32, step = size.x / N, small = document.createElement('canvas');
+      small.width = small.height = N;
+      const sctx = small.getContext('2d'), img = sctx.createImageData(N, N);
+      const W = 256 * Math.pow(2, coords.z), x0 = coords.x * size.x, y0 = coords.y * size.y;
+      for (let py = 0; py < N; py++) {
+        const lat = unY(y0 + (py + .5) * step, W);
+        for (let px = 0; px < N; px++) {
+          const lon = unX(x0 + (px + .5) * step, W), m = migParts(wxDay, lat, lon), o = (py * N + px) * 4;
+          if (!m) continue;
+          img.data[o] = 27; img.data[o + 1] = 36; img.data[o + 2] = 64;
+          img.data[o + 3] = Math.round((12 + 200 * m.score) * wxEdge(lat, lon));
+        }
+      }
+      sctx.putImageData(img, 0, 0);
+      const ctx = cv.getContext('2d');
+      ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(small, -step / 2, -step / 2, size.x + step, size.y + step);
+      done(null, cv);
+    }).catch(err => done(err, cv));
+    return cv;
+  }
+});
+const wxMig = new WxMigLayer({ tileSize: 256, zIndex: 4, attribution: 'Weather: NOAA GFS' });
+overlayLayers.wxmig = wxMig;
+watchLoading(wxMig, 'wxm', 'Loading migration conditions');
+wxMig.on('add remove', () => syncWxBar());
+document.querySelector('[data-layer="wxmig"]').addEventListener('change', e => {
+  if (e.target.checked) loadWx().catch(() => { flashHint('Weather data isn’t available yet'); e.target.checked = false; setLayer('wxmig', false); });
+});
+function migrationInfo(latlng) {
+  if (!wx || !wxMig._map) return null;
+  const m = migParts(wxDay, latlng.lat, latlng.lng);
+  if (!m) return null;
+  const pct = x => Math.round(x * 100) + '%';
+  const spd = Math.hypot(m.u, m.v), from = (Math.atan2(-m.u, -m.v) * 180 / Math.PI + 360) % 360;
+  const [label, kind] = wxDayText(wxDay);
+  const stat = (l, v, sub) => `<div class="stat"><span>${l}</span><b>${v}</b>${sub ? `<small>${sub}</small>` : ''}</div>`;
+  return `<span class="badge">Migration conditions · ${esc(label)}</span>
+    <h2>${migLevel(m.score)}</h2>
+    <p class="sub">${esc(kind)} · overall ${pct(m.score)}</p>
+    <div class="stats">
+      ${stat('Freeze pressure', pct(m.freeze), m.run ? `${m.run} night${m.run > 1 ? 's' : ''} in a row at 25 °F or colder` : `low ${Math.round(m.lo)} °F, high ${Math.round(m.hi)} °F`)}
+      ${stat('Snow', pct(m.snow), m.fresh >= 0.1 ? `${m.fresh.toFixed(1)} in fresh` : m.depth >= 0.5 ? `${m.depth.toFixed(1)} in on the ground` : 'none')}
+      ${stat('Tailwind', pct(m.tail), spd < 1 ? 'calm' : `from ${DIR16[Math.round(from / 22.5) % 16]} ${Math.round(spd)} mph`)}
+    </div>
+    <div class="caution"><b>Conditions, not a bird forecast.</b> This combines cold, snow and wind that tend to push waterfowl south. It can’t see where birds actually are.</div>`;
+}
 
 function updateWetNote() {
   document.getElementById('wetZoomNote').style.display = map.getZoom() < WET_MIN_ZOOM ? '' : 'none';
