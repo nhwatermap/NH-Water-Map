@@ -1,7 +1,16 @@
-name: Build wetlands
+name: Build map layers
 
 on:
-  workflow_dispatch:       # only runs when you press "Run workflow" (about once a year)
+  workflow_dispatch:       # only runs when you press "Run workflow"
+    inputs:
+      layer:
+        description: "Which layer to build"
+        type: choice
+        options:
+          - public lands
+          - wetlands
+          - both
+        default: public lands
 
 permissions:
   contents: write
@@ -13,22 +22,31 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - name: Download wetlands
+        if: inputs.layer == 'wetlands' || inputs.layer == 'both'
         run: python build_wetlands.py
-      - name: Save wetlands folder
+      - name: Download public lands
+        if: inputs.layer == 'public lands' || inputs.layer == 'both'
+        run: python build_lands.py
+      - name: Save the new layer files
         run: |
-          mkdir -p /tmp/wetlands && cp -r wetlands/. /tmp/wetlands/
+          mkdir -p /tmp/keep
+          for d in wetlands lands; do
+            if [ -f "$d/index.json" ]; then cp -r "$d" /tmp/keep/; fi
+          done
           git fetch origin main
           git reset --hard origin/main
-          rm -rf wetlands && mkdir -p wetlands && cp -r /tmp/wetlands/. wetlands/
+          for d in wetlands lands; do
+            if [ -d "/tmp/keep/$d" ]; then rm -rf "$d" && cp -r "/tmp/keep/$d" "$d"; fi
+          done
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A wetlands
-          git diff --staged --quiet || git commit -m "Build wetlands"
+          for d in wetlands lands; do if [ -d "$d" ]; then git add -A "$d"; fi; done
+          git diff --staged --quiet || git commit -m "Build map layers (${{ inputs.layer }})"
           git push origin HEAD:main
