@@ -647,7 +647,7 @@ const WetlandLayer = L.TileLayer.extend({
 });
 const wetlands = new WetlandLayer('', { tileSize: 256, minZoom: WET_MIN_ZOOM, maxZoom: 18, opacity: 1,
   attribution: 'Wetlands: U.S. Fish &amp; Wildlife Service NWI' });
-map.attributionControl.addAttribution('Page v32 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
+map.attributionControl.addAttribution('Page v33 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
 // A slow or failed square is retried up to twice (after 2 s, then 5 s). We never switch to the
 // server's standard green colors; a square that still fails just stays blank.
 wetlands.on('tileerror', e => {
@@ -931,7 +931,9 @@ const LandLayer = L.GridLayer.extend({
     return cv;
   }
 });
-const landLayer = new LandLayer({ tileSize: 256, minZoom: LAND_MIN_ZOOM, maxZoom: 18, attribution: 'Public land: NH GRANIT' });
+const landLayer = new LandLayer({ tileSize: 256, minZoom: LAND_MIN_ZOOM, maxZoom: 18, zIndex: 3, attribution: 'Public land: NH GRANIT' });
+// Wetlands draw above public land so marsh colors stay clear
+wetLocal.setZIndex(5); wetServer.setZIndex(5);
 overlayLayers.lands = landLayer;
 
 async function landInfo(latlng) {
@@ -968,7 +970,7 @@ map.on('click', async e => {
   if (placing) return;
   const [land, wet] = await Promise.all([landInfo(e.latlng), wetlandInfo(e.latlng)]);
   if (!land && !wet) return;
-  document.getElementById('detailBody').innerHTML = [land, wet].filter(Boolean).join('<hr class="sep">') +
+  document.getElementById('detailBody').innerHTML = [wet, land].filter(Boolean).join('<hr class="sep">') +
     `<div class="mk-actions"><button class="primary" id="spotMark">📍 Mark this spot</button></div>`;
   document.getElementById('spotMark').onclick = () => { map.panTo(e.latlng); startPlacing(); };
   document.getElementById('detail').classList.add('show');
