@@ -86,6 +86,34 @@ main{position:relative;flex:1;min-height:0}
 .layer-row b{display:block;font-weight:600}
 .layer-row small{display:block;color:var(--muted);font-size:.8rem;line-height:1.3}
 .layer-note{color:var(--muted);font-size:.75rem;margin:.35rem 0 0;line-height:1.3}
+/* ---------- About button, disclaimer gate and tour ---------- */
+.about-btn{font:inherit;font-size:.85rem;font-weight:600;border:1px solid var(--line);background:transparent;color:var(--ink);border-radius:999px;padding:.2rem .65rem;margin-left:.6rem;cursor:pointer;white-space:nowrap}
+.gate{position:fixed;inset:0;z-index:3000;background:rgba(10,14,12,.72);display:flex;align-items:center;justify-content:center;padding:max(.75rem, env(safe-area-inset-top)) .75rem max(.75rem, env(safe-area-inset-bottom))}
+.gate[hidden]{display:none}
+.gate-card{background:var(--panel);color:var(--ink);border-radius:14px;max-width:560px;width:100%;max-height:100%;display:flex;flex-direction:column;padding:1.1rem 1.1rem 1rem;box-shadow:0 6px 30px rgba(0,0,0,.45)}
+.gate-card h2{margin:0 0 .6rem;font-size:1.3rem}
+.gate-text{overflow-y:auto;flex:1;min-height:0;font-size:.95rem;line-height:1.45;padding-right:.3rem;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.gate-text p{margin:.7rem 0}
+.gate-check{display:flex;gap:.6rem;align-items:center;margin:.9rem 0 .7rem;font-weight:600;font-size:.98rem;cursor:pointer}
+.gate-check input{width:1.4rem;height:1.4rem;accent-color:var(--accent);flex:none}
+.gate-btn{font:inherit;font-weight:700;font-size:1.05rem;width:100%;padding:.85rem;border-radius:10px;border:0;background:var(--accent);color:var(--panel);cursor:pointer}
+.gate-btn:disabled{opacity:.4;cursor:not-allowed}
+.tour-ring{position:fixed;z-index:2900;border:3px solid #ffd36e;border-radius:12px;box-shadow:0 0 0 9999px rgba(10,14,12,.55);pointer-events:none;transition:all .25s ease}
+.tour-ring[hidden]{display:none}
+.tour-card{position:fixed;z-index:2950;left:50%;transform:translateX(-50%);bottom:max(1rem, env(safe-area-inset-bottom));width:min(440px,calc(100% - 1.5rem));background:var(--panel);color:var(--ink);border-radius:14px;padding:1rem 1.1rem;box-shadow:0 6px 24px rgba(0,0,0,.45)}
+.tour-card[hidden]{display:none}
+.tour-card.top{bottom:auto;top:max(1rem, env(safe-area-inset-top))}
+.tour-step{font-size:.8rem;color:var(--muted);font-weight:600}
+.tour-card h3{margin:.2rem 0 .35rem;font-size:1.15rem}
+.tour-card p{margin:0 0 .9rem;line-height:1.45;font-size:.95rem}
+.tour-btns{display:flex;gap:.5rem;align-items:center}
+.tour-btns span{flex:1}
+.tour-btns button{font:inherit;font-weight:700;font-size:1rem;border-radius:10px;padding:.65rem 1rem;cursor:pointer;min-width:4.5rem}
+.tour-btns .primary{background:var(--accent);color:var(--panel);border:0}
+.tour-btns .ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+@media (prefers-reduced-motion: reduce){.tour-ring{transition:none}}
+@media (max-width:640px){.about-btn{margin-left:auto}}
+
 .mig-swatch{width:22px;height:22px;border-radius:4px;flex:none;margin-top:.05rem;border:1.5px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4);background:linear-gradient(135deg,rgba(46,26,120,.08),rgba(46,26,120,.92)),#eef0f2}
 .daybar .mig-scale{display:none;grid-template-columns:auto repeat(4,1fr);gap:0 3px;align-items:end;font-size:.7rem;color:var(--muted);margin-top:.35rem;position:relative;padding-top:10px}
 .wx-mig-on .daybar .mig-scale{display:grid}
@@ -273,7 +301,7 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:1rem 0}
     <button data-mode="level" aria-pressed="false"><span class="full">Water level</span><span class="short">Level</span></button>
     <button data-mode="temp" aria-pressed="false"><span class="full">Water temp</span><span class="short">Temp</span></button>
   </div>
-  <div class="status"><span id="status"><span class="full">Loading…</span><span class="short">Loading…</span></span></div>
+  <div class="status"><span id="status"><span class="full">Loading…</span><span class="short">Loading…</span></span><button class="about-btn" id="aboutBtn" aria-label="About this map">ⓘ About</button></div>
 </header>
 <main>
   <div id="map"></div>
@@ -296,8 +324,7 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:1rem 0}
     <button class="menu-btn" aria-expanded="false" aria-controls="landBody"><span>🌲 Land</span><span aria-hidden="true">▾</span></button>
     <div class="layers-body" id="landBody">
       <fieldset class="map-style"><legend>Map style</legend>
-        <label><input type="radio" name="basemap" value="esri"> Topo (Esri)</label>
-        <label><input type="radio" name="basemap" value="usgsTopo"> USGS topo</label>
+        <label><input type="radio" name="basemap" value="usgsTopo"> Topo (USGS)</label>
         <label><input type="radio" name="basemap" value="usgsSat"> Satellite (USGS)</label>
         <small id="satNote" class="layer-note" style="flex-basis:100%;margin:0" aria-live="polite"></small>
       </fieldset>
@@ -358,8 +385,6 @@ const markers = L.layerGroup();
 const map = L.map('map').setView([43.9, -71.55], 8);
 // Base map styles (switch in the Layers panel)
 const BASEMAPS = {
-  esri: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
-    { maxZoom: 17, attribution: 'Map: Esri, HERE, Garmin, USGS, NGA, EPA, NPS' }),
   usgsTopo: L.tileLayer('https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}',
     { maxZoom: 18, maxNativeZoom: 16, attribution: 'Map: USGS The National Map' }),
   usgsSat: L.layerGroup()  // filled in below: tries several USGS imagery sources until one works
@@ -387,7 +412,7 @@ function useSatSource(i) {
   satNote('Loading satellite imagery…');
 }
 useSatSource(0);
-let basemapKey = 'esri';
+let basemapKey = 'usgsTopo';  // anyone who had the old Esri map lands here
 try { if (BASEMAPS[localStorage.getItem('basemap')]) basemapKey = localStorage.getItem('basemap'); } catch (e) { }
 BASEMAPS[basemapKey].addTo(map);
 map.attributionControl.addAttribution('Water data: USGS, US Army Corps of Engineers, NH DES | Access sites: NH Fish and Game via NH GRANIT');
@@ -710,7 +735,7 @@ const WetlandLayer = L.TileLayer.extend({
 });
 const wetlands = new WetlandLayer('', { tileSize: 256, minZoom: WET_MIN_ZOOM, maxZoom: 18, opacity: 1,
   attribution: 'Wetlands: U.S. Fish &amp; Wildlife Service NWI' });
-map.attributionControl.addAttribution('Page v38 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
+map.attributionControl.addAttribution('Page v39 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
 // A slow or failed square is retried up to twice (after 2 s, then 5 s). We never switch to the
 // server's standard green colors; a square that still fails just stays blank.
 wetlands.on('tileerror', e => {
@@ -1967,6 +1992,100 @@ function migrationInfo(latlng) {
     <div class="caution"><b>Conditions, not a bird forecast.</b> This combines cold, snow and wind that tend to push waterfowl south. It can’t see where birds actually are.</div>`;
 }
 
+
+// ---------- Disclaimer (required once per device, again when it changes) ----------
+const DISCLAIMER_VERSION = '2026-11-20';
+const FEEDBACK_URL = '';   // e.g. 'mailto:yourmapemail@gmail.com' or a Google Form link — shown in About when filled in
+function agreed() { try { return localStorage.getItem('disclaimer-agreed') === DISCLAIMER_VERSION; } catch (e) { return false; } }
+function showGate(onDone) {
+  const gate = document.getElementById('gate'), ok = document.getElementById('gateOk'), btn = document.getElementById('gateAgree');
+  gate.hidden = false; ok.checked = false; btn.disabled = true;
+  ok.onchange = () => { btn.disabled = !ok.checked; };
+  btn.onclick = () => {
+    try { localStorage.setItem('disclaimer-agreed', DISCLAIMER_VERSION); localStorage.setItem('disclaimer-agreed-on', new Date().toISOString()); } catch (e) { }
+    gate.hidden = true;
+    onDone && onDone();
+  };
+  setTimeout(() => document.querySelector('.gate-text').focus(), 50);
+}
+
+// ---------- Tour ----------
+const TOUR = [
+  { sel: '.modes', title: 'What the dots show', text: 'These buttons change what the colored dots on the map mean: change in the last 24 hours, compared to this month’s average, compared to summer, water level, or water temperature.' },
+  { sel: '#map', title: 'Tap anything', text: 'Circles are lakes and ponds, squares are rivers. Tap a dot, a wetland, a park or a spot on the map to see the details. The legend in the bottom corner explains the colors.', box: 'center' },
+  { sel: '#layers .menu-btn', title: '💧 Water', text: 'Turn on tides, boat ramps, cartop launches, marshes and wetlands, and your saved spots.' },
+  { sel: '#landLayers .menu-btn', title: '🌲 Land', text: 'Public land (WMAs, state forests, parks, federal and town land) and the map style: topo or satellite.' },
+  { sel: '#wxLayers .menu-btn', title: '⛅ Weather', text: 'Temperature, wind, snow and migration conditions. A slider lets you look 5 days back and 5 days ahead.' },
+  { sel: '#addBtn', title: '📍 Save your spots', text: 'Add a marker for a spot you want to remember. My spots lists them, and you can share them with a friend by QR code or link. They stay private on your phone.' },
+  { sel: '#aboutBtn', title: 'About & help', text: 'The data sources, the disclaimer, and this tour are always here.' }
+];
+let tourI = 0;
+function placeTour() {
+  const step = TOUR[tourI], ring = document.getElementById('tourRing'), card = document.getElementById('tourCard');
+  document.querySelectorAll('.layers.open').forEach(o => o.classList.remove('open'));
+  const el = document.querySelector(step.sel);
+  document.getElementById('tourStep').textContent = `${tourI + 1} of ${TOUR.length}`;
+  document.getElementById('tourTitle').textContent = step.title;
+  document.getElementById('tourText').textContent = step.text;
+  document.getElementById('tourBack').style.visibility = tourI ? 'visible' : 'hidden';
+  document.getElementById('tourNext').textContent = tourI === TOUR.length - 1 ? 'Done' : 'Next';
+  if (!el) { ring.hidden = true; return; }
+  let r = el.getBoundingClientRect();
+  if (step.box === 'center') { const w = Math.min(r.width * .6, 260), h = Math.min(r.height * .35, 200); r = { left: r.left + (r.width - w) / 2, top: r.top + (r.height - h) / 2.6, width: w, height: h }; }
+  const pad = 6;
+  Object.assign(ring.style, { left: (r.left - pad) + 'px', top: (r.top - pad) + 'px', width: (r.width + pad * 2) + 'px', height: (r.height + pad * 2) + 'px' });
+  ring.hidden = false;
+  // Keep the card away from what it points at
+  card.classList.toggle('top', r.top > window.innerHeight * .55);
+}
+function startTour() {
+  tourI = 0;
+  document.getElementById('detail').classList.remove('show');
+  document.getElementById('tourCard').hidden = false;
+  placeTour();
+  document.getElementById('tourNext').focus();
+}
+function endTour() {
+  document.getElementById('tourCard').hidden = true; document.getElementById('tourRing').hidden = true;
+  try { localStorage.setItem('tour-seen', '1'); } catch (e) { }
+}
+document.getElementById('tourNext').onclick = () => { if (tourI < TOUR.length - 1) { tourI++; placeTour(); } else endTour(); };
+document.getElementById('tourBack').onclick = () => { if (tourI > 0) { tourI--; placeTour(); } };
+document.getElementById('tourSkip').onclick = endTour;
+window.addEventListener('resize', () => { if (!document.getElementById('tourCard').hidden) placeTour(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !document.getElementById('tourCard').hidden) endTour(); });
+
+function offerTour() {
+  let seen = false; try { seen = localStorage.getItem('tour-seen') === '1'; } catch (e) { }
+  if (seen) return;
+  document.getElementById('detailBody').innerHTML = `<h2>Welcome!</h2>
+    <p>This map pulls together water levels, temperatures, tides, wetlands, public land and weather for New Hampshire, updated twice a day.</p>
+    <div class="mk-actions"><button class="primary" id="tourYes">Show me around (1 minute)</button><button id="tourNo">Not now</button></div>
+    <p class="layer-note">You can take the tour anytime from ⓘ About.</p>`;
+  document.getElementById('detail').classList.add('show');
+  document.getElementById('tourYes').onclick = startTour;
+  document.getElementById('tourNo').onclick = () => { try { localStorage.setItem('tour-seen', '1'); } catch (e) { } document.getElementById('detail').classList.remove('show'); };
+}
+
+// ---------- About ----------
+function openAbout() {
+  document.getElementById('detailBody').innerHTML = `<h2>About this map</h2>
+    <p><b>NH Water Conditions</b> is a free, unofficial map for anglers, waterfowl hunters and paddlers. It gathers public data in one place and updates it twice a day (about 3 AM and 1 PM).</p>
+    <div class="mk-actions"><button class="primary" id="aboutTour">Take the tour</button><button id="aboutDisc">Read the disclaimer</button></div>
+    ${FEEDBACK_URL ? `<p><a href="${esc(FEEDBACK_URL)}" target="_blank" rel="noopener">Send feedback or report a problem</a></p>` : ''}
+    <h3 class="imp-h">Where the data comes from</h3>
+    <p class="layer-note" style="font-size:.85rem">River and lake gauges: USGS, U.S. Army Corps of Engineers, NH DES · Tides, seacoast temperatures and buoys: NOAA, Great Bay NERR via NERACOOS · Weather: NOAA GFS model · Wetlands: U.S. Fish and Wildlife Service National Wetlands Inventory · Public land and boat access: NH GRANIT and NH Fish and Game · Map: USGS The National Map</p>
+    <h3 class="imp-h">Please keep in mind</h3>
+    <p class="layer-note" style="font-size:.85rem">Data can be wrong, late or missing. Not for navigation, flood or ice safety. Public land shown here is not permission to hunt or fish; always check current regulations and property rules. Saved spots stay private on your device.</p>`;
+  document.getElementById('detail').classList.add('show');
+  document.getElementById('aboutTour').onclick = startTour;
+  document.getElementById('aboutDisc').onclick = () => showGate();
+}
+document.getElementById('aboutBtn').addEventListener('click', openAbout);
+
+// First visit: disclaimer, then offer the tour
+if (!agreed()) showGate(offerTour); else offerTour();
+
 function updateWetNote() {
   document.getElementById('wetZoomNote').style.display = map.getZoom() < WET_MIN_ZOOM ? '' : 'none';
 }
@@ -2015,5 +2134,28 @@ fetch('data.json?v=' + Date.now())
     showError('No readings yet. On GitHub, open the Actions tab and run “Update water data” once to create them.');
   });
 </script>
+
+<div class="gate" id="gate" role="dialog" aria-modal="true" aria-labelledby="gateTitle" hidden>
+  <div class="gate-card">
+    <h2 id="gateTitle">Before you use this map</h2>
+    <div class="gate-text" tabindex="0">
+      <p><b>NH Water Conditions</b> is a free, unofficial map that gathers public data from government agencies (USGS, the U.S. Army Corps of Engineers, NOAA, NH DES, the U.S. Fish and Wildlife Service, NH Fish and Game and NH GRANIT) in one place. It is a planning aid only.</p>
+      <p><b>Data can be wrong, late or missing.</b> Gauges fail, ice affects sensors, and agencies revise their numbers. Weather values come from a computer model, and forecasts more than a few days out are less certain.</p>
+      <p><b>Not for safety decisions.</b> Do not use this map for navigation, flood decisions or <b>ice safety</b>. Water temperature and weather here say nothing about whether ice is safe.</p>
+      <p><b>Check the rules yourself.</b> Land shown as public or managed by an agency is <b>not</b> a statement that hunting, fishing or access is allowed. Boundaries are approximate. Always check current regulations, property rules, postings and seasons before you go.</p>
+      <p><b>You are responsible for your own safety</b> and for following the law. Conditions on the water and in the field can change quickly.</p>
+      <p><b>Your saved spots stay private.</b> Markers you save are stored only in your own browser on this device. Nothing is uploaded unless you choose to share it.</p>
+    </div>
+    <label class="gate-check"><input type="checkbox" id="gateOk"> I’ve read this and understand the map’s limits</label>
+    <button class="gate-btn" id="gateAgree" disabled>Agree &amp; continue</button>
+  </div>
+</div>
+<div class="tour-ring" id="tourRing" hidden></div>
+<div class="tour-card" id="tourCard" role="dialog" aria-live="polite" hidden>
+  <div class="tour-step" id="tourStep"></div>
+  <h3 id="tourTitle"></h3>
+  <p id="tourText"></p>
+  <div class="tour-btns"><button id="tourSkip" class="ghost">Skip</button><span></span><button id="tourBack" class="ghost">Back</button><button id="tourNext" class="primary">Next</button></div>
+</div>
 </body>
 </html>
