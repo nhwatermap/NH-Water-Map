@@ -86,6 +86,13 @@ main{position:relative;flex:1;min-height:0}
 .layer-row b{display:block;font-weight:600}
 .layer-row small{display:block;color:var(--muted);font-size:.8rem;line-height:1.3}
 .layer-note{color:var(--muted);font-size:.75rem;margin:.35rem 0 0;line-height:1.3}
+.wind-swatch{width:22px;height:22px;border-radius:4px;flex:none;margin-top:.05rem;border:1.5px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4);background:#e9eef0;display:flex;flex-direction:column;justify-content:center;gap:3px;padding:0 3px}
+.wind-swatch i{height:1.5px;background:#12202a;border-radius:1px;opacity:.85}
+.wind-swatch i:nth-child(2){margin-left:5px;opacity:.6}
+.wind-swatch i:nth-child(3){margin-right:6px;opacity:.4}
+.daybar .wx-scale{display:none}
+.wx-temp-on .daybar .wx-scale{display:grid}
+
 .wx-swatch{width:22px;height:22px;border-radius:4px;flex:none;margin-top:.05rem;border:1.5px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4);background:linear-gradient(135deg,#2c63d1,#a9d8f2 40%,#f4f9fb 50%,#ffd36e 65%,#f2542d)}
 .daybar{position:absolute;left:50%;transform:translateX(-50%);bottom:1rem;z-index:620;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:.5rem .7rem;width:min(460px,calc(100% - 1rem));box-shadow:0 2px 8px rgba(0,0,0,.3);display:none}
 .wx-on .daybar{display:block}
@@ -285,6 +292,7 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:1rem 0}
     <button class="menu-btn" aria-expanded="false" aria-controls="wxBody"><span>⛅ Weather</span><span aria-hidden="true">▾</span></button>
     <div class="layers-body" id="wxBody">
       <label class="layer-row"><input type="checkbox" data-layer="wxtemp"><span class="wx-swatch" aria-hidden="true"></span><span><b>Temperature</b><small>A color wash from deep blue (hard freeze) through white (about 32 °F) to orange and red. Use the day slider to go 5 days back or 5 days ahead.</small></span></label>
+      <label class="layer-row"><input type="checkbox" data-layer="wxwind"><span class="wind-swatch" aria-hidden="true"><i></i><i></i><i></i></span><span><b>Wind</b><small>Streaks drift with each day’s average wind. Faster wind = faster, darker streaks. Tap the map for direction and speed.</small></span></label>
       <fieldset class="map-style" id="wxShow"><legend>Show</legend>
         <label><input type="radio" name="wxshow" value="tmin" checked> Overnight low</label>
         <label><input type="radio" name="wxshow" value="tmax"> Daytime high</label>
@@ -681,7 +689,7 @@ const WetlandLayer = L.TileLayer.extend({
 });
 const wetlands = new WetlandLayer('', { tileSize: 256, minZoom: WET_MIN_ZOOM, maxZoom: 18, opacity: 1,
   attribution: 'Wetlands: U.S. Fish &amp; Wildlife Service NWI' });
-map.attributionControl.addAttribution('Page v34 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
+map.attributionControl.addAttribution('Page v35 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
 // A slow or failed square is retried up to twice (after 2 s, then 5 s). We never switch to the
 // server's standard green colors; a square that still fails just stays blank.
 wetlands.on('tileerror', e => {
@@ -1585,6 +1593,13 @@ function wxAt(field, day, lat, lon) {
   if (v00 === M || v01 === M || v10 === M || v11 === M) return null;
   return (v00 * (1 - dj) + v01 * dj) * (1 - di) + (v10 * (1 - dj) + v11 * dj) * di;
 }
+// Fade out over the last ~20 miles of the weather area so it doesn't end in a hard edge
+function wxEdge(lat, lon) {
+  const g = wx.grid, latN = g.lat0 + g.dlat * (g.nlat - 1), lonE = g.lon0 + g.dlon * (g.nlon - 1);
+  const k = Math.cos(lat * Math.PI / 180);
+  const d = Math.min(lat - g.lat0, latN - lat, (lon - g.lon0) * k, (lonE - lon) * k);  // degrees of latitude ≈ 69 miles
+  return Math.max(0, Math.min(1, d / 0.29));
+}
 const TEMP_STOPS = [[-10, [75, 29, 122]], [0, [59, 63, 176]], [10, [44, 99, 209]], [20, [61, 143, 224]], [25, [108, 180, 236]],
   [30, [169, 216, 242]], [32, [244, 249, 251]], [35, [255, 243, 176]], [40, [255, 211, 110]], [50, [255, 154, 60]], [60, [242, 84, 45]], [75, [179, 18, 46]]];
 function tempColor(f) {
@@ -1610,7 +1625,7 @@ const WxTempLayer = L.GridLayer.extend({
           const v = wxAt(wxShow, wxDay, lat, unX(x0 + (px + .5) * step, W)), o = (py * N + px) * 4;
           if (v == null) { img.data[o + 3] = 0; continue; }
           const c = tempColor(v);
-          img.data[o] = c[0]; img.data[o + 1] = c[1]; img.data[o + 2] = c[2]; img.data[o + 3] = 150;
+          img.data[o] = c[0]; img.data[o + 1] = c[1]; img.data[o + 2] = c[2]; img.data[o + 3] = Math.round(150 * wxEdge(lat, unX(x0 + (px + .5) * step, W)));
         }
       }
       sctx.putImageData(img, 0, 0);
@@ -1650,13 +1665,18 @@ function setWxDay(i) {
   wxDay = Math.max(0, Math.min(wx.days.length - 1, i));
   updateDayLabel();
   wxTemp.redraw();
+  if (typeof wxWind !== 'undefined') wxWind.refresh();
 }
 document.getElementById('dayRange').addEventListener('input', e => setWxDay(+e.target.value));
 document.getElementById('dayPrev').onclick = () => setWxDay(wxDay - 1);
 document.getElementById('dayNext').onclick = () => setWxDay(wxDay + 1);
 document.getElementById('dayToday').onclick = () => wx && setWxDay(wx.days.findIndex(x => x.kind === 'today'));
 document.querySelectorAll('input[name=wxshow]').forEach(r => r.addEventListener('change', () => { if (r.checked) { wxShow = r.value; wxTemp.redraw(); } }));
-function syncWxBar() { mainEl.classList.toggle('wx-on', !!wxTemp._map); }
+function syncWxBar() {
+  const windOn = typeof wxWind !== 'undefined' && !!wxWind._map;
+  mainEl.classList.toggle('wx-on', !!wxTemp._map || windOn);
+  mainEl.classList.toggle('wx-temp-on', !!wxTemp._map);
+}
 wxTemp.on('add remove', syncWxBar);
 document.querySelector('[data-layer="wxtemp"]').addEventListener('change', e => {
   if (e.target.checked) loadWx().catch(() => { flashHint('Weather data isn’t available yet'); e.target.checked = false; setLayer('wxtemp', false); });
@@ -1665,7 +1685,7 @@ document.querySelector('[data-layer="wxtemp"]').addEventListener('change', e => 
 // Weather at a tapped spot
 const DIR16 = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
 function weatherInfo(latlng) {
-  if (!wx || !wxTemp._map) return null;
+  if (!wx || !(wxTemp._map || (typeof wxWind !== 'undefined' && wxWind._map))) return null;
   const lat = latlng.lat, lon = latlng.lng, d = wxDay;
   const lo = wxAt('tmin', d, lat, lon), hi = wxAt('tmax', d, lat, lon);
   if (lo == null) return null;
@@ -1683,6 +1703,90 @@ function weatherInfo(latlng) {
     </div>
     <p class="layer-note">Model values for this area, not a station reading. Forecasts beyond about 3 days are less certain.</p>`;
 }
+
+
+// ---------- Wind: streaks drifting with each day's average wind ----------
+map.createPane('windPane').style.zIndex = 450;
+map.getPane('windPane').style.pointerEvents = 'none';
+const WindLayer = L.Layer.extend({
+  onAdd(m) {
+    this._cv = L.DomUtil.create('canvas', '', m.getPane('windPane'));
+    this._stop = this._stop.bind(this); this._reset = this._reset.bind(this); this._frame = this._frame.bind(this);
+    m.on('movestart zoomstart', this._stop); m.on('moveend', this._reset);
+    this._vis = () => { if (document.hidden) this._stop(); else this._reset(); };
+    document.addEventListener('visibilitychange', this._vis);
+    loadWx().then(this._reset).catch(() => {});
+  },
+  onRemove(m) {
+    this._stop();
+    m.off('movestart zoomstart', this._stop); m.off('moveend', this._reset);
+    document.removeEventListener('visibilitychange', this._vis);
+    L.DomUtil.remove(this._cv);
+  },
+  _stop() { cancelAnimationFrame(this._raf); this._raf = null; if (this._cv) this._cv.getContext('2d').clearRect(0, 0, this._cv.width, this._cv.height); },
+  _reset() {
+    if (!this._map || !wx) return;
+    this._stop();
+    const m = this._map, size = m.getSize(), dpr = Math.min(window.devicePixelRatio || 1, 2), cv = this._cv;
+    cv.width = size.x * dpr; cv.height = size.y * dpr; cv.style.width = size.x + 'px'; cv.style.height = size.y + 'px';
+    L.DomUtil.setPosition(cv, m.containerPointToLayerPoint([0, 0]));
+    const ctx = cv.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    // Wind field on an 8-pixel screen grid: screen pixels per frame, plus edge fade
+    const S = 8, cols = Math.ceil(size.x / S) + 2, rows = Math.ceil(size.y / S) + 2, F = new Float32Array(cols * rows * 3);
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+      const ll = m.containerPointToLatLng([c * S, r * S]), o = (r * cols + c) * 3;
+      const u = wxAt('umean', wxDay, ll.lat, ll.lng), v = wxAt('vmean', wxDay, ll.lat, ll.lng);
+      if (u == null || v == null) { F[o] = NaN; continue; }
+      F[o] = u / 10 * 0.06; F[o + 1] = -v / 10 * 0.06; F[o + 2] = wxEdge(ll.lat, ll.lng);
+    }
+    this._f = { F, cols, rows, S };
+    const n = Math.min(2500, Math.round(size.x * size.y / 1400));
+    this._p = Array.from({ length: n }, () => this._spawn(size));
+    this._size = size;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {   // still streamlines, no animation
+      for (let k = 0; k < 30; k++) this._step(ctx, false);
+      return;
+    }
+    this._raf = requestAnimationFrame(this._frame);
+  },
+  _spawn(size) { return { x: Math.random() * size.x, y: Math.random() * size.y, age: Math.floor(Math.random() * 90), max: 60 + Math.random() * 60 }; },
+  _vec(x, y) {
+    const { F, cols, rows, S } = this._f, fx = x / S, fy = y / S, c = Math.floor(fx), r = Math.floor(fy);
+    if (c < 0 || r < 0 || c >= cols - 1 || r >= rows - 1) return null;
+    const dx = fx - c, dy = fy - r, at = (rr, cc) => (rr * cols + cc) * 3;
+    const a = at(r, c), b = at(r, c + 1), d = at(r + 1, c), e = at(r + 1, c + 1);
+    if (isNaN(F[a]) || isNaN(F[b]) || isNaN(F[d]) || isNaN(F[e])) return null;
+    const mix = k => (F[a + k] * (1 - dx) + F[b + k] * dx) * (1 - dy) + (F[d + k] * (1 - dx) + F[e + k] * dx) * dy;
+    return [mix(0), mix(1), mix(2)];
+  },
+  _step(ctx, fade) {
+    if (fade) {   // let old streaks fade so they leave short trails
+      ctx.globalCompositeOperation = 'destination-in';
+      ctx.fillStyle = 'rgba(0,0,0,.92)'; ctx.fillRect(0, 0, this._size.x, this._size.y);
+      ctx.globalCompositeOperation = 'source-over';
+    }
+    ctx.lineWidth = 1.3; ctx.lineCap = 'round';
+    for (const p of this._p) {
+      const w = this._vec(p.x, p.y);
+      if (!w || ++p.age > p.max) { Object.assign(p, this._spawn(this._size), { age: 0 }); continue; }
+      const nx = p.x + w[0], ny = p.y + w[1], mph = Math.hypot(w[0], w[1]) / 0.06;
+      ctx.strokeStyle = `rgba(18,30,40,${(Math.min(1, .25 + mph / 25) * w[2]).toFixed(2)})`;
+      ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(nx, ny); ctx.stroke();
+      p.x = nx; p.y = ny;
+    }
+  },
+  _frame() {
+    this._step(this._cv.getContext('2d'), true);
+    this._raf = requestAnimationFrame(this._frame);
+  },
+  refresh() { if (this._map) this._reset(); }
+});
+const wxWind = new WindLayer();
+overlayLayers.wxwind = wxWind;
+wxWind.on('add remove', () => syncWxBar());
+document.querySelector('[data-layer="wxwind"]').addEventListener('change', e => {
+  if (e.target.checked) loadWx().catch(() => { flashHint('Weather data isn’t available yet'); e.target.checked = false; setLayer('wxwind', false); });
+});
 
 function updateWetNote() {
   document.getElementById('wetZoomNote').style.display = map.getZoom() < WET_MIN_ZOOM ? '' : 'none';
