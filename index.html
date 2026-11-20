@@ -372,6 +372,29 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:1rem 0}
     <button class="primary" id="placeOk">Save here</button><button id="placeCancel">Cancel</button>
   </div>
 </main>
+<div class="gate" id="gate" role="dialog" aria-modal="true" aria-labelledby="gateTitle" hidden>
+  <div class="gate-card">
+    <h2 id="gateTitle">Before you use this map</h2>
+    <div class="gate-text" tabindex="0">
+      <p><b>NH Water Conditions</b> is a free, unofficial map that gathers public data from government agencies (USGS, the U.S. Army Corps of Engineers, NOAA, NH DES, the U.S. Fish and Wildlife Service, NH Fish and Game and NH GRANIT) in one place. It is a planning aid only.</p>
+      <p><b>Data can be wrong, late or missing.</b> Gauges fail, ice affects sensors, and agencies revise their numbers. Weather values come from a computer model, and forecasts more than a few days out are less certain.</p>
+      <p><b>Not for safety decisions.</b> Do not use this map for navigation, flood decisions or <b>ice safety</b>. Water temperature and weather here say nothing about whether ice is safe.</p>
+      <p><b>Check the rules yourself.</b> Land shown as public or managed by an agency is <b>not</b> a statement that hunting, fishing or access is allowed. Boundaries are approximate. Always check current regulations, property rules, postings and seasons before you go.</p>
+      <p><b>You are responsible for your own safety</b> and for following the law. Conditions on the water and in the field can change quickly.</p>
+      <p><b>Your saved spots stay private.</b> Markers you save are stored only in your own browser on this device. Nothing is uploaded unless you choose to share it.</p>
+    </div>
+    <label class="gate-check"><input type="checkbox" id="gateOk"> I’ve read this and understand the map’s limits</label>
+    <button class="gate-btn" id="gateAgree" disabled>Agree &amp; continue</button>
+  </div>
+</div>
+<div class="tour-ring" id="tourRing" hidden></div>
+<div class="tour-card" id="tourCard" role="dialog" aria-live="polite" hidden>
+  <div class="tour-step" id="tourStep"></div>
+  <h3 id="tourTitle"></h3>
+  <p id="tourText"></p>
+  <div class="tour-btns"><button id="tourSkip" class="ghost">Skip</button><span></span><button id="tourBack" class="ghost">Back</button><button id="tourNext" class="primary">Next</button></div>
+</div>
+
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
@@ -735,7 +758,7 @@ const WetlandLayer = L.TileLayer.extend({
 });
 const wetlands = new WetlandLayer('', { tileSize: 256, minZoom: WET_MIN_ZOOM, maxZoom: 18, opacity: 1,
   attribution: 'Wetlands: U.S. Fish &amp; Wildlife Service NWI' });
-map.attributionControl.addAttribution('Page v39 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
+map.attributionControl.addAttribution('Page v40 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
 // A slow or failed square is retried up to twice (after 2 s, then 5 s). We never switch to the
 // server's standard green colors; a square that still fails just stays blank.
 wetlands.on('tileerror', e => {
@@ -2134,28 +2157,5 @@ fetch('data.json?v=' + Date.now())
     showError('No readings yet. On GitHub, open the Actions tab and run “Update water data” once to create them.');
   });
 </script>
-
-<div class="gate" id="gate" role="dialog" aria-modal="true" aria-labelledby="gateTitle" hidden>
-  <div class="gate-card">
-    <h2 id="gateTitle">Before you use this map</h2>
-    <div class="gate-text" tabindex="0">
-      <p><b>NH Water Conditions</b> is a free, unofficial map that gathers public data from government agencies (USGS, the U.S. Army Corps of Engineers, NOAA, NH DES, the U.S. Fish and Wildlife Service, NH Fish and Game and NH GRANIT) in one place. It is a planning aid only.</p>
-      <p><b>Data can be wrong, late or missing.</b> Gauges fail, ice affects sensors, and agencies revise their numbers. Weather values come from a computer model, and forecasts more than a few days out are less certain.</p>
-      <p><b>Not for safety decisions.</b> Do not use this map for navigation, flood decisions or <b>ice safety</b>. Water temperature and weather here say nothing about whether ice is safe.</p>
-      <p><b>Check the rules yourself.</b> Land shown as public or managed by an agency is <b>not</b> a statement that hunting, fishing or access is allowed. Boundaries are approximate. Always check current regulations, property rules, postings and seasons before you go.</p>
-      <p><b>You are responsible for your own safety</b> and for following the law. Conditions on the water and in the field can change quickly.</p>
-      <p><b>Your saved spots stay private.</b> Markers you save are stored only in your own browser on this device. Nothing is uploaded unless you choose to share it.</p>
-    </div>
-    <label class="gate-check"><input type="checkbox" id="gateOk"> I’ve read this and understand the map’s limits</label>
-    <button class="gate-btn" id="gateAgree" disabled>Agree &amp; continue</button>
-  </div>
-</div>
-<div class="tour-ring" id="tourRing" hidden></div>
-<div class="tour-card" id="tourCard" role="dialog" aria-live="polite" hidden>
-  <div class="tour-step" id="tourStep"></div>
-  <h3 id="tourTitle"></h3>
-  <p id="tourText"></p>
-  <div class="tour-btns"><button id="tourSkip" class="ghost">Skip</button><span></span><button id="tourBack" class="ghost">Back</button><button id="tourNext" class="primary">Next</button></div>
-</div>
 </body>
 </html>
