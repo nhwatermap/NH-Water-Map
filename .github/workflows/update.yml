@@ -16,7 +16,7 @@ concurrency:
 jobs:
   update:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -26,14 +26,24 @@ jobs:
         env:
           USGS_API_KEY: ${{ secrets.USGS_API_KEY }}
         run: python collect.py
+      - name: Install weather decoder
+        continue-on-error: true
+        run: pip install pygrib==2.1.8
+      - name: Collect weather
+        continue-on-error: true   # if NOAA is down, the water data still updates and the last weather is kept
+        timeout-minutes: 20
+        run: python collect_weather.py
       - name: Save data.json
         run: |
           cp data.json /tmp/data.json
+          if [ -f weather.json ]; then cp weather.json /tmp/weather.json; fi
           git fetch origin main
           git reset --hard origin/main
           cp /tmp/data.json data.json
+          if [ -f /tmp/weather.json ]; then cp /tmp/weather.json weather.json; fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add data.json
+          if [ -f weather.json ]; then git add weather.json; fi
           git diff --staged --quiet || git commit -m "Update water data"
           git push origin HEAD:main
