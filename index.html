@@ -86,6 +86,13 @@ main{position:relative;flex:1;min-height:0}
 .layer-row b{display:block;font-weight:600}
 .layer-row small{display:block;color:var(--muted);font-size:.8rem;line-height:1.3}
 .layer-note{color:var(--muted);font-size:.75rem;margin:.35rem 0 0;line-height:1.3}
+.snow-swatch{width:22px;height:22px;border-radius:4px;flex:none;margin-top:.05rem;border:1.5px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4);background:radial-gradient(circle at 30% 35%,#fff 0 1.6px,transparent 2px),radial-gradient(circle at 70% 65%,#fff 0 1.6px,transparent 2px),linear-gradient(135deg,#d6d0fa,#7056cc)}
+.daybar .snow-scale{display:none;grid-template-columns:auto repeat(6,1fr);gap:3px;align-items:center;font-size:.7rem;margin-top:.35rem}
+.wx-snow-on .daybar .snow-scale{display:grid}
+.snow-scale b{font-weight:600;color:var(--muted);margin-right:.2rem}
+.snow-scale span{text-align:center;border-radius:3px;padding:1px 0;color:#1c2822}
+.snow-scale .flake{background:#7a8a94;color:#fff}
+
 .wind-swatch{width:22px;height:22px;border-radius:4px;flex:none;margin-top:.05rem;border:1.5px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4);background:#e9eef0;display:flex;flex-direction:column;justify-content:center;gap:3px;padding:0 3px}
 .wind-swatch i{height:1.5px;background:#12202a;border-radius:1px;opacity:.85}
 .wind-swatch i:nth-child(2){margin-left:5px;opacity:.6}
@@ -97,6 +104,7 @@ main{position:relative;flex:1;min-height:0}
 .daybar{position:absolute;left:50%;transform:translateX(-50%);bottom:1rem;z-index:620;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:.5rem .7rem;width:min(460px,calc(100% - 1rem));box-shadow:0 2px 8px rgba(0,0,0,.3);display:none}
 .wx-on .daybar{display:block}
 .wx-on .busy{bottom:9.2rem}
+.wx-snow-on .busy{bottom:11rem}
 .daybar-row{display:flex;align-items:center;gap:.5rem}
 .daybar-row input[type=range]{flex:1;accent-color:var(--accent)}
 .daybar-row button{font:inherit;border:1px solid var(--line);background:transparent;color:var(--ink);border-radius:6px;padding:.15rem .5rem;cursor:pointer}
@@ -293,6 +301,7 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:1rem 0}
     <div class="layers-body" id="wxBody">
       <label class="layer-row"><input type="checkbox" data-layer="wxtemp"><span class="wx-swatch" aria-hidden="true"></span><span><b>Temperature</b><small>A color wash from deep blue (hard freeze) through white (about 32 °F) to orange and red. Use the day slider to go 5 days back or 5 days ahead.</small></span></label>
       <label class="layer-row"><input type="checkbox" data-layer="wxwind"><span class="wind-swatch" aria-hidden="true"><i></i><i></i><i></i></span><span><b>Wind</b><small>Streaks drift with each day’s average wind. Faster wind = faster, darker streaks. Tap the map for direction and speed.</small></span></label>
+      <label class="layer-row"><input type="checkbox" data-layer="wxsnow"><span class="snow-swatch" aria-hidden="true"></span><span><b>Snow</b><small>Lavender to purple: snow on the ground (deeper = darker). White flakes: fresh snow that day.</small></span></label>
       <fieldset class="map-style" id="wxShow"><legend>Show</legend>
         <label><input type="radio" name="wxshow" value="tmin" checked> Overnight low</label>
         <label><input type="radio" name="wxshow" value="tmax"> Daytime high</label>
@@ -315,6 +324,7 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:1rem 0}
       <button id="dayNext" aria-label="Next day">▶</button>
     </div>
     <div class="daybar-row daybar-info"><b id="dayLabel">Today</b><span id="dayKind"></span><button id="dayToday">Today</button></div>
+    <div class="snow-scale" aria-hidden="true"><b>Snow on ground</b><span style="background:rgba(214,208,250,.75)">1″</span><span style="background:rgba(184,170,240,.85)">3″</span><span style="background:rgba(150,128,226,.9);color:#fff">6″</span><span style="background:rgba(112,86,204,.92);color:#fff">12″</span><span style="background:rgba(76,52,170,.95);color:#fff">24″+</span><span class="flake">✻ fresh</span></div>
     <div class="wx-scale" aria-hidden="true"><i></i><span>0</span><span>10</span><span>20</span><span>32</span><span>40</span><span>50</span><span>60 °F</span></div>
   </div>
   <div class="busy" id="busy" role="status" aria-live="polite"></div>
@@ -689,7 +699,7 @@ const WetlandLayer = L.TileLayer.extend({
 });
 const wetlands = new WetlandLayer('', { tileSize: 256, minZoom: WET_MIN_ZOOM, maxZoom: 18, opacity: 1,
   attribution: 'Wetlands: U.S. Fish &amp; Wildlife Service NWI' });
-map.attributionControl.addAttribution('Page v35 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
+map.attributionControl.addAttribution('Page v36 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
 // A slow or failed square is retried up to twice (after 2 s, then 5 s). We never switch to the
 // server's standard green colors; a square that still fails just stays blank.
 wetlands.on('tileerror', e => {
@@ -1666,6 +1676,7 @@ function setWxDay(i) {
   updateDayLabel();
   wxTemp.redraw();
   if (typeof wxWind !== 'undefined') wxWind.refresh();
+  if (typeof wxSnow !== 'undefined' && wxSnow._map) { wxSnow.redraw(); snowHint(); }
 }
 document.getElementById('dayRange').addEventListener('input', e => setWxDay(+e.target.value));
 document.getElementById('dayPrev').onclick = () => setWxDay(wxDay - 1);
@@ -1673,8 +1684,9 @@ document.getElementById('dayNext').onclick = () => setWxDay(wxDay + 1);
 document.getElementById('dayToday').onclick = () => wx && setWxDay(wx.days.findIndex(x => x.kind === 'today'));
 document.querySelectorAll('input[name=wxshow]').forEach(r => r.addEventListener('change', () => { if (r.checked) { wxShow = r.value; wxTemp.redraw(); } }));
 function syncWxBar() {
-  const windOn = typeof wxWind !== 'undefined' && !!wxWind._map;
-  mainEl.classList.toggle('wx-on', !!wxTemp._map || windOn);
+  const windOn = typeof wxWind !== 'undefined' && !!wxWind._map, snowOn = typeof wxSnow !== 'undefined' && !!wxSnow._map;
+  mainEl.classList.toggle('wx-on', !!wxTemp._map || windOn || snowOn);
+  mainEl.classList.toggle('wx-snow-on', snowOn);
   mainEl.classList.toggle('wx-temp-on', !!wxTemp._map);
 }
 wxTemp.on('add remove', syncWxBar);
@@ -1685,7 +1697,7 @@ document.querySelector('[data-layer="wxtemp"]').addEventListener('change', e => 
 // Weather at a tapped spot
 const DIR16 = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
 function weatherInfo(latlng) {
-  if (!wx || !(wxTemp._map || (typeof wxWind !== 'undefined' && wxWind._map))) return null;
+  if (!wx || !(wxTemp._map || (typeof wxWind !== 'undefined' && wxWind._map) || (typeof wxSnow !== 'undefined' && wxSnow._map))) return null;
   const lat = latlng.lat, lon = latlng.lng, d = wxDay;
   const lo = wxAt('tmin', d, lat, lon), hi = wxAt('tmax', d, lat, lon);
   if (lo == null) return null;
@@ -1786,6 +1798,76 @@ overlayLayers.wxwind = wxWind;
 wxWind.on('add remove', () => syncWxBar());
 document.querySelector('[data-layer="wxwind"]').addEventListener('change', e => {
   if (e.target.checked) loadWx().catch(() => { flashHint('Weather data isn’t available yet'); e.target.checked = false; setLayer('wxwind', false); });
+});
+
+
+// ---------- Snow: depth on the ground, plus flakes for fresh snow ----------
+const SNOW_STOPS = [[0.5, [226, 222, 252, 110]], [1, [214, 208, 250, 140]], [3, [184, 170, 240, 165]], [6, [150, 128, 226, 180]],
+  [12, [112, 86, 204, 190]], [24, [76, 52, 170, 200]]];
+function snowColor(inches) {
+  if (inches < SNOW_STOPS[0][0]) return null;
+  for (let k = 1; k < SNOW_STOPS.length; k++) {
+    const [b, cb] = SNOW_STOPS[k], [a, ca] = SNOW_STOPS[k - 1];
+    if (inches <= b) { const t = (inches - a) / (b - a); return [0, 1, 2, 3].map(c => Math.round(ca[c] + (cb[c] - ca[c]) * t)); }
+  }
+  return SNOW_STOPS[SNOW_STOPS.length - 1][1];
+}
+// Same spot always gets the same flake pattern, so flakes don't jump around between redraws
+const hash = (a, b) => { let h = Math.imul(a * 374761393 + b * 668265263 | 0, 1274126177); h ^= h >>> 13; return ((h >>> 0) % 1000) / 1000; };
+const WxSnowLayer = L.GridLayer.extend({
+  createTile(coords, done) {
+    const size = this.getTileSize(), cv = document.createElement('canvas');
+    cv.width = size.x; cv.height = size.y;
+    loadWx().then(() => {
+      const N = 32, step = size.x / N, small = document.createElement('canvas');
+      small.width = small.height = N;
+      const sctx = small.getContext('2d'), img = sctx.createImageData(N, N);
+      const W = 256 * Math.pow(2, coords.z), x0 = coords.x * size.x, y0 = coords.y * size.y;
+      const flakes = [];
+      for (let py = 0; py < N; py++) {
+        const lat = unY(y0 + (py + .5) * step, W);
+        for (let px = 0; px < N; px++) {
+          const lon = unX(x0 + (px + .5) * step, W), o = (py * N + px) * 4;
+          const depth = wxAt('snod', wxDay, lat, lon), fresh = wxAt('newsnow', wxDay, lat, lon), pct = wxAt('snowpct', wxDay, lat, lon);
+          const c = depth == null ? null : snowColor(depth / 10), edge = wxEdge(lat, lon);
+          if (c) { img.data[o] = c[0]; img.data[o + 1] = c[1]; img.data[o + 2] = c[2]; img.data[o + 3] = Math.round(c[3] * edge); }
+          // Fresh snow: more flakes for more snow (or for snowy hours when depth didn't build up)
+          const amt = fresh == null ? 0 : Math.max(fresh / 10, (pct || 0) > 30 ? 0.3 : 0);
+          if (amt >= 0.2 && edge > 0.2) {
+            const gx = Math.round((x0 + px * step) / step), gy = Math.round((y0 + py * step) / step);
+            if (hash(gx, gy) < Math.min(0.85, 0.15 + amt / 4)) flakes.push([px * step + hash(gy, gx) * step, py * step + hash(gx + 7, gy) * step, edge]);
+          }
+        }
+      }
+      sctx.putImageData(img, 0, 0);
+      const ctx = cv.getContext('2d');
+      ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(small, -step / 2, -step / 2, size.x + step, size.y + step);
+      for (const [fx, fy, e] of flakes) {
+        ctx.globalAlpha = e;
+        ctx.beginPath(); ctx.arc(fx, fy, 2.1, 0, Math.PI * 2);
+        ctx.fillStyle = '#fff'; ctx.fill(); ctx.lineWidth = 0.8; ctx.strokeStyle = 'rgba(40,50,70,.55)'; ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+      done(null, cv);
+    }).catch(err => done(err, cv));
+    return cv;
+  }
+});
+const wxSnow = new WxSnowLayer({ tileSize: 256, zIndex: 3, attribution: 'Weather: NOAA GFS' });
+overlayLayers.wxsnow = wxSnow;
+watchLoading(wxSnow, 'wxs', 'Loading snow');
+function snowAnywhere(day) {
+  if (!wx) return true;
+  const d = wx.fields.snod[day], n = wx.fields.newsnow[day], p = wx.fields.snowpct[day];
+  for (let i = 0; i < d.length; i++) if (d[i] >= 5 || n[i] >= 1 || p[i] > 30) return true;
+  return false;
+}
+function snowHint() { if (wxSnow._map && wx && !snowAnywhere(wxDay)) flashHint('No snow in the weather area on this day'); }
+wxSnow.on('add remove', () => syncWxBar());
+wxSnow.on('add', () => loadWx().then(snowHint).catch(() => {}));
+document.querySelector('[data-layer="wxsnow"]').addEventListener('change', e => {
+  if (e.target.checked) loadWx().catch(() => { flashHint('Weather data isn’t available yet'); e.target.checked = false; setLayer('wxsnow', false); });
 });
 
 function updateWetNote() {
