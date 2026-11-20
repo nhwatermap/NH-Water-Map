@@ -86,6 +86,18 @@ main{position:relative;flex:1;min-height:0}
 .layer-row b{display:block;font-weight:600}
 .layer-row small{display:block;color:var(--muted);font-size:.8rem;line-height:1.3}
 .layer-note{color:var(--muted);font-size:.75rem;margin:.35rem 0 0;line-height:1.3}
+.land-swatch{width:22px;height:22px;border-radius:4px;overflow:hidden;display:flex;flex-direction:column;flex:none;margin-top:.05rem;border:1.5px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4)}
+.land-swatch i{flex:1}
+.land-swatch .wma,.key.lk-wma{background:#5b4bb7}
+.land-swatch .forest,.key.lk-forest{background:#2f6b3a}
+.land-swatch .park,.key.lk-park{background:repeating-linear-gradient(135deg,#c0392b 0 1.5px,#f3c9c4 1.5px 4px)}
+.key.lk-federal{background:#13808a}
+.key.lk-town{background:transparent;border:1.5px dashed #6e5e48}
+.key.lk-trust{background:transparent;border:1.5px dashed #96730a}
+.caution-mini{display:block;margin-top:.3rem;color:var(--ink);font-size:.78rem;line-height:1.35}
+.caution{border:1px solid #c0392b;border-left-width:4px;border-radius:6px;padding:.5rem .6rem;margin:.6rem 0;font-size:.88rem;line-height:1.4}
+hr.sep{border:0;border-top:1px solid var(--line);margin:1rem 0}
+
 .busy{position:absolute;left:50%;bottom:2.6rem;transform:translateX(-50%);z-index:640;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:999px;padding:.4rem .9rem;font-size:.88rem;font-weight:600;box-shadow:0 2px 6px rgba(0,0,0,.3);display:none;white-space:nowrap;pointer-events:none}
 .busy.show{display:block}
 .busy.dots::after{content:'';display:inline-block;width:1.2em;text-align:left;animation:busydots 1.2s steps(4,end) infinite}
@@ -244,9 +256,10 @@ main{position:relative;flex:1;min-height:0}
       <label class="layer-row"><input type="checkbox" data-layer="ramp"><span class="acc-icon" data-icon="ramp"></span><span><b>Boat ramps</b><small>Launch sites for trailered boats, with a concrete, gravel or paved ramp.</small></span></label>
       <label class="layer-row"><input type="checkbox" data-layer="cartop"><span class="acc-icon cartop" data-icon="cartop"></span><span><b>Cartop access</b><small>Hand-carry launches for canoes, kayaks and small boats you can lift off a car. No trailer ramp.</small></span></label>
       <p class="layer-note">Zoomed out, sites show as small diamonds; zoom in for full icons. Access sites from NH Fish and Game. Not every site is open year-round; check before you go.</p>
+      <label class="layer-row"><input type="checkbox" data-layer="lands"><span class="land-swatch" aria-hidden="true"><i class="wma"></i><i class="forest"></i><i class="park"></i></span><span><b>Public land</b><small><span class="key lk-wma"></span>Fish and Game land (WMAs)<br><span class="key lk-forest"></span>State forest or state land<br><span class="key lk-park"></span>State park (red hatching)<br><span class="key lk-federal"></span>Federal: national forest, wildlife refuge, Army Corps flood control land<br><span class="key lk-town"></span>Town or county land (zoom in)<br><span class="key lk-trust"></span>Land trust land open to the public (zoom in)</small><small class="caution-mini">Shows who owns and manages land, <b>not</b> whether hunting is allowed. Always check current rules for the property.</small></span></label>
+      <p class="layer-note">Public land from NH GRANIT, updated by the state about twice a year. Private land under conservation easements isn’t shown, since it’s usually not open to the public. Tap a parcel for details.</p>
       <label class="layer-row"><input type="checkbox" data-layer="wetlands"><span class="wet-swatch" aria-hidden="true"><i></i><i></i><i></i></span><span><b>Marshes &amp; wetlands</b><small><span class="key marsh"></span>Orange: marsh and salt marsh (cattail, grass, sedge).<br><span class="key swamp"></span>Tan: shrub and wooded swamp.<br><span class="key weedy"></span>Striped green: weedy ponds and shallows (lily pads, pondweed, floating plants).</small><small id="wetZoomNote">Zoom in to about town level to see the shading.</small></span></label>
       <p class="layer-note">Wetlands from the U.S. Fish and Wildlife Service National Wetlands Inventory. Mapped from aerial photos and may be years old; boundaries are approximate and many are on private land. Tap a wetland to see what it is.</p>
-      <label class="layer-note" style="display:flex;gap:.4rem;align-items:center;cursor:pointer"><input type="checkbox" id="wetCompare"> Compare: draw from the Fish and Wildlife Service server instead</label>
     </div>
   </div>
     <button class="add-btn" id="addBtn">📍 Add marker</button>
@@ -629,7 +642,7 @@ const WetlandLayer = L.TileLayer.extend({
 });
 const wetlands = new WetlandLayer('', { tileSize: 256, minZoom: WET_MIN_ZOOM, maxZoom: 18, opacity: 1,
   attribution: 'Wetlands: U.S. Fish &amp; Wildlife Service NWI' });
-map.attributionControl.addAttribution('Page v29 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
+map.attributionControl.addAttribution('Page v30 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
 // A slow or failed square is retried up to twice (after 2 s, then 5 s). We never switch to the
 // server's standard green colors; a square that still fails just stays blank.
 wetlands.on('tileerror', e => {
@@ -792,17 +805,17 @@ function inWet(f, lon, lat) {
   }
   return inside;
 }
-async function identifyWetland(latlng) {
-  if (!wetIndex) return false;
+async function wetlandInfo(latlng) {
+  if (!wetIndex || overlayLayers.wetlands !== wetLocal || !wetLocal._map || map.getZoom() < WET_MIN_ZOOM) return null;
   const lon = latlng.lng, lat = latlng.lat;
   const keys = chunksFor(lon, lat, lon, lat).filter(k => wetChunks.has(k));
   const hits = (await Promise.all(keys.map(k => wetChunks.get(k).catch(() => [])))).flat().filter(f => inWet(f, lon, lat));
-  if (!hits.length) return false;
+  if (!hits.length) return null;
   const rank = { w: 0, m: 1, s: 2 };
   hits.sort((a, b) => rank[a.c] - rank[b.c] || (a.bb[2] - a.bb[0]) * (a.bb[3] - a.bb[1]) - (b.bb[2] - b.bb[0]) * (b.bb[3] - b.bb[1]));
   const f = hits[0], d = decodeNwi(f.code);
-  const stat = (label, val, sub) => `<div class="stat${sub === 'wide' ? ' wide' : ''}"><span>${label}</span><b>${val}</b></div>`;
-  document.getElementById('detailBody').innerHTML = `<span class="badge">Wetland</span>
+  const stat = (label, val) => `<div class="stat"><span>${label}</span><b>${val}</b></div>`;
+  return `<span class="badge">Wetland</span>
     <h2>${esc(wetName(f))}</h2>
     <p class="sub">${esc([d.system, ...d.classes].filter(Boolean).join(' · '))}</p>
     <div class="stats">
@@ -811,15 +824,149 @@ async function identifyWetland(latlng) {
     </div>
     ${d.water ? `<p><b>Water:</b> ${esc(d.water)}</p>` : ''}
     ${d.mods.length ? `<p><b>Also:</b> ${esc(d.mods.join('; '))}</p>` : ''}
-    <div class="mk-actions"><button class="primary" id="wetMark">📍 Mark this spot</button></div>
     <p class="layer-note">From the U.S. Fish and Wildlife Service National Wetlands Inventory, mapped from aerial photos that may be years old. Boundaries are approximate and many wetlands are on private land.</p>`;
-  document.getElementById('wetMark').onclick = () => { map.panTo(latlng); startPlacing(); };
-  document.getElementById('detail').classList.add('show');
-  return true;
 }
-map.on('click', e => {
-  if (placing || overlayLayers.wetlands !== wetLocal || !wetLocal._map || map.getZoom() < WET_MIN_ZOOM) return;
-  identifyWetland(e.latlng);
+
+// ---------- Public land (NH GRANIT Conservation and Public Lands, built into lands/) ----------
+function makeSource(dir) {
+  let index = null, p = null;
+  const cache = new Map();
+  return {
+    get index() { return index; },
+    load() {
+      return p || (p = fetch(dir + 'index.json').then(r => { if (!r.ok) throw new Error('missing'); return r.json(); })
+        .then(d => (index = d)).catch(e => { p = null; throw e; }));
+    },
+    chunk(key, decode) {
+      if (!cache.has(key)) cache.set(key, fetch(dir + 'c_' + key + '.json').then(r => { if (!r.ok) throw new Error('chunk'); return r.json(); })
+        .then(d => d.f.map(decode)).catch(e => { cache.delete(key); throw e; }));
+      return cache.get(key);
+    },
+    has: key => cache.has(key),
+    keysFor(w, s, e, n) {
+      return index ? Object.entries(index.chunks).filter(([, b]) => b[0] <= e && b[2] >= w && b[1] <= n && b[3] >= s).map(([k]) => k) : [];
+    }
+  };
+}
+function decodeRings(rings) {
+  let minx = Infinity, miny = Infinity, maxx = -Infinity, maxy = -Infinity;
+  const rs = rings.map(r => {
+    const out = new Float64Array(r.length);
+    let x = 0, y = 0;
+    for (let i = 0; i < r.length; i += 2) {
+      x += r[i]; y += r[i + 1];
+      const lon = x / 1e5, lat = y / 1e5;
+      out[i] = lon; out[i + 1] = lat;
+      if (lon < minx) minx = lon; if (lon > maxx) maxx = lon; if (lat < miny) miny = lat; if (lat > maxy) maxy = lat;
+    }
+    return out;
+  });
+  return { rings: rs, bb: [minx, miny, maxx, maxy] };
+}
+const landSrc = makeSource('lands/');
+const decodeLand = ([cat, name, pname, acres, agency, access, rings]) => ({ cat, name, pname, acres, agency, access, ...decodeRings(rings) });
+const LAND_MIN_ZOOM = 8;
+const LAND_STYLE = {
+  town:    { fill: 'rgba(122,106,85,.14)', edge: 'rgba(110,94,72,.8)', w: 1.2, dash: [4, 3], minZoom: 11 },
+  trust:   { fill: 'rgba(176,138,26,.16)', edge: 'rgba(150,115,10,.85)', w: 1.2, dash: [4, 3], minZoom: 11 },
+  forest:  { fill: 'rgba(47,107,58,.18)', edge: 'rgba(36,90,46,.9)', w: 1.4 },
+  federal: { fill: 'rgba(19,128,138,.16)', edge: 'rgba(14,104,112,.9)', w: 1.4 },
+  wma:     { fill: 'rgba(91,75,183,.2)', edge: 'rgba(74,58,170,.95)', w: 2.2 },
+  park:    { fill: 'rgba(192,57,43,.10)', edge: 'rgba(192,57,43,.95)', w: 2, hatch: true }
+};
+const LAND_ORDER = ['town', 'trust', 'forest', 'federal', 'wma', 'park'];
+const LAND_LABEL = { wma: 'Fish and Game land (WMA)', forest: 'State forest or state land', park: 'State park',
+  federal: 'Federal land', town: 'Town or county land', trust: 'Land trust land, open to the public' };
+let hatchTile = null;
+function redHatch(ctx) {
+  if (!hatchTile) {
+    hatchTile = document.createElement('canvas'); hatchTile.width = hatchTile.height = 10;
+    const c = hatchTile.getContext('2d');
+    c.strokeStyle = 'rgba(192,57,43,.55)'; c.lineWidth = 1.2;
+    c.beginPath(); c.moveTo(0, 10); c.lineTo(10, 0); c.moveTo(-3, 3); c.lineTo(3, -3); c.moveTo(7, 13); c.lineTo(13, 7); c.stroke();
+  }
+  return ctx.createPattern(hatchTile, 'repeat');
+}
+const LandLayer = L.GridLayer.extend({
+  createTile(coords, done) {
+    const size = this.getTileSize(), dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const cv = document.createElement('canvas');
+    cv.width = size.x * dpr; cv.height = size.y * dpr;
+    const W = 256 * Math.pow(2, coords.z), x0 = coords.x * size.x, y0 = coords.y * size.y;
+    const w = unX(x0, W), e = unX(x0 + size.x, W), n = unY(y0, W), s = unY(y0 + size.y, W);
+    landSrc.load()
+      .then(() => Promise.all(landSrc.keysFor(w, s, e, n).map(k => landSrc.chunk(k, decodeLand))))
+      .then(lists => {
+        const ctx = cv.getContext('2d');
+        ctx.scale(dpr, dpr);
+        const feats = lists.flat().filter(f => f.bb[0] <= e && f.bb[2] >= w && f.bb[1] <= n && f.bb[3] >= s);
+        let hatch = null;
+        for (const cat of LAND_ORDER) {
+          const st = LAND_STYLE[cat];
+          if (st.minZoom && coords.z < st.minZoom) continue;
+          for (const f of feats) {
+            if (f.cat !== cat) continue;
+            ctx.beginPath();
+            for (const r of f.rings) {
+              for (let i = 0; i < r.length; i += 2) {
+                const px = mercX(r[i], W) - x0, py = mercY(r[i + 1], W) - y0;
+                i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+              }
+              ctx.closePath();
+            }
+            ctx.fillStyle = st.fill; ctx.fill('evenodd');
+            if (st.hatch) { ctx.fillStyle = hatch || (hatch = redHatch(ctx)); ctx.fill('evenodd'); }
+            ctx.setLineDash(st.dash || []);
+            ctx.lineWidth = st.w; ctx.strokeStyle = st.edge; ctx.stroke();
+          }
+        }
+        done(null, cv);
+      })
+      .catch(err => done(err, cv));
+    return cv;
+  }
+});
+const landLayer = new LandLayer({ tileSize: 256, minZoom: LAND_MIN_ZOOM, maxZoom: 18, attribution: 'Public land: NH GRANIT' });
+overlayLayers.lands = landLayer;
+
+async function landInfo(latlng) {
+  if (!landLayer._map || !landSrc.index || map.getZoom() < LAND_MIN_ZOOM) return null;
+  const lon = latlng.lng, lat = latlng.lat;
+  const keys = landSrc.keysFor(lon, lat, lon, lat).filter(k => landSrc.has(k));
+  const all = (await Promise.all(keys.map(k => landSrc.chunk(k, decodeLand).catch(() => [])))).flat();
+  const hits = all.filter(f => (!LAND_STYLE[f.cat].minZoom || map.getZoom() >= LAND_STYLE[f.cat].minZoom) && inWet(f, lon, lat));
+  if (!hits.length) return null;
+  // Most specific first: the smallest parcel under your finger
+  hits.sort((a, b) => (a.bb[2] - a.bb[0]) * (a.bb[3] - a.bb[1]) - (b.bb[2] - b.bb[0]) * (b.bb[3] - b.bb[1]));
+  const accessText = (landSrc.index.access || {})[String(hits[0].access)] || '';
+  const f = hits[0];
+  const stat = (label, val) => `<div class="stat"><span>${label}</span><b>${val}</b></div>`;
+  const q = encodeURIComponent(`"${f.name}" New Hampshire hunting rules`);
+  const official = f.cat === 'park' ? ['NH State Parks', 'https://www.nhstateparks.org/']
+    : /Forest Service/i.test(f.agency) ? ['White Mountain National Forest', 'https://www.fs.usda.gov/whitemountain'] : null;
+  const others = hits.slice(1, 3).map(h => `${esc(h.name)} (${esc(LAND_LABEL[h.cat])})`);
+  return `<span class="badge">${esc(LAND_LABEL[f.cat])}</span>
+    <h2>${esc(f.name)}</h2>
+    ${f.pname ? `<p class="sub">${esc(f.pname)}</p>` : ''}
+    <div class="stats">
+      ${stat('Managed by', esc(f.agency || 'Not listed'))}
+      ${stat('Size', f.acres ? f.acres.toLocaleString() + ' acres' : '—')}
+      ${accessText ? `<div class="stat wide"><span>Public access (state records)</span><b style="font-size:.95rem">${esc(accessText)}</b></div>` : ''}
+    </div>
+    ${others.length ? `<p class="layer-note">Also here: ${others.join('; ')}</p>` : ''}
+    <div class="caution"><b>⚠ Check current hunting rules for this property before you go.</b> This map shows who owns and manages the land, not whether hunting is allowed. Rules vary by property, can differ within one property, and change. Boundaries are approximate.</div>
+    <p><a href="https://www.wildlife.nh.gov/" target="_blank" rel="noopener">NH Fish and Game (hunting rules)</a>${official ? ` · <a href="${official[1]}" target="_blank" rel="noopener">${official[0]}</a>` : ''} · <a href="https://www.google.com/search?q=${q}" target="_blank" rel="noopener">Search this property’s rules</a></p>`;
+}
+
+// Tap the map: show public land and wetland info for that spot (either or both)
+map.on('click', async e => {
+  if (placing) return;
+  const [land, wet] = await Promise.all([landInfo(e.latlng), wetlandInfo(e.latlng)]);
+  if (!land && !wet) return;
+  document.getElementById('detailBody').innerHTML = [land, wet].filter(Boolean).join('<hr class="sep">') +
+    `<div class="mk-actions"><button class="primary" id="spotMark">📍 Mark this spot</button></div>`;
+  document.getElementById('spotMark').onclick = () => { map.panTo(e.latlng); startPlacing(); };
+  document.getElementById('detail').classList.add('show');
 });
 
 // ---------- Tides (NOAA) ----------
@@ -1364,7 +1511,11 @@ function watchLoading(layer, key, text) {
 }
 watchLoading(wetlands, 'wet', 'Loading wetland shading');
 watchLoading(wetLocal, 'wet', 'Loading wetland shading');
-document.getElementById('wetCompare').addEventListener('change', e => useWetSource(e.target.checked));
+watchLoading(landLayer, 'land', 'Loading public land');
+landSrc.load().catch(() => { const cb = document.querySelector('[data-layer="lands"]'); if (cb) { cb.disabled = true; cb.closest('label').title = 'Public land hasn’t been built yet'; } });
+document.querySelector('[data-layer="lands"]').addEventListener('change', e => {
+  if (e.target.checked && map.getZoom() < LAND_MIN_ZOOM) flashHint('Zoom in closer to see public land');
+});
 watchLoading(BASEMAPS.usgsTopo, 'base', 'Loading map');
 // Satellite: watch whichever USGS source is in use
 const _useSat = useSatSource;
