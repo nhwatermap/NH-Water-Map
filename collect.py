@@ -280,13 +280,14 @@ def water_f(raw, label_says_celsius, where="", site=None):
 
 # ---------------- Summer (growing season) level: June-August average ----------------
 def summer_window():
-    """This summer so far (in Jun-Aug), this summer (Sep-Dec), or last summer (Jan-May)."""
+    """Last summer (Jan-Jun), this summer so far (Jul-Aug), or this summer (Sep-Dec).
+    June is too early in the growing season to stand on its own, so it uses last year's summer."""
     y = LOCAL.year
-    if LOCAL.month in (6, 7, 8):
+    if LOCAL.month in (7, 8):
         start = datetime(y, 6, 1, tzinfo=timezone.utc)
         end = datetime(LOCAL.year, LOCAL.month, LOCAL.day, tzinfo=timezone.utc)  # through yesterday
         return start, end, y, True
-    if LOCAL.month < 6:
+    if LOCAL.month <= 6:
         y -= 1
     return datetime(y, 6, 1, tzinfo=timezone.utc), datetime(y, 9, 1, tzinfo=timezone.utc), y, False
 
