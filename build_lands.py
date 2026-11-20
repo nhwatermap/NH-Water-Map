@@ -8,7 +8,7 @@ Saves small chunk files in the lands/ folder. Uses only Python's built-in tools.
 Shows who owns and manages each parcel. It does NOT say whether hunting is allowed:
 rules vary by property and change, so the map always points people to the official rules.
 """
-import json, os, time, urllib.request, urllib.parse
+import json, os, re, time, urllib.request, urllib.parse
 from datetime import datetime, timezone
 
 SERVICE = "https://nhgeodata.unh.edu/nhgeodata/rest/services/EC/Conservation/MapServer"
@@ -27,7 +27,8 @@ KNOWN_AGENCIES = {32000: "NH Fish and Game", 31000: "NH Dept. of Natural and Cul
                   22000: "U.S. Forest Service", 21000: "U.S. Fish and Wildlife Service", 21100: "National Park Service",
                   21200: "National Park Service (Appalachian Trail)", 23000: "U.S. Army Corps of Engineers",
                   23100: "U.S. Air Force", 30000: "State of New Hampshire", 20000: "U.S. Government"}
-PARK_WORDS = ("STATE PARK", " PARK", "BEACH", "HISTORIC SITE", "WAYSIDE", "MEMORIAL", "CAMPGROUND", "SKI AREA")
+# Parks and recreation areas, matched as whole words ("Parker Brook" is not a park)
+PARK_RE = re.compile(r"\b(STATE PARK|PARK|SP|BEACH|RECREATION AREA|REC AREA|CAMPGROUND|DAY USE|PICNIC AREA|HISTORIC SITE|WAYSIDE|SKI AREA)\b")
 
 
 def call(path, params, tries=4, post=False):
@@ -88,12 +89,17 @@ def category(attrs):
         return None  # easement on private land (even one held by an agency): not open to the public
     if agency == 32000:
         return "wma"
+    public = (agency // 1000 in (20, 21, 22, 23) or 30000 <= agency < 40000 or 1000 <= agency < 20000
+              or agtype in (1, 2, 3, 4) or owner in (1, 2, 3, 4, 6))
+    # Any public park or recreation area, whoever manages it (e.g. a state park on Army Corps land)
+    if public and PARK_RE.search(name):
+        return "park"
     if 31000 <= agency < 32000:
-        return "park" if any(w in name for w in PARK_WORDS) and "FOREST" not in name else "forest"
+        return "forest"
     if agency // 1000 in (20, 21, 22, 23) or agtype == 2 or owner == 2:
         return "federal"
     if agtype == 3 or owner == 3:
-        return "park" if "STATE PARK" in name else "forest"
+        return "forest"
     if agtype in (1, 4) or owner in (1, 4, 6):
         return "town"
     if owner == 5 and access in (1, 2) and pptype in ("FO", "LE", "RV", ""):
@@ -202,7 +208,7 @@ def main():
     with open(os.path.join(OUT, "index.json"), "w") as fh:
         json.dump(meta, fh, separators=(",", ":"))
 
-    labels = {"wma": "Fish and Game (WMA)", "forest": "state forest", "park": "state park", "federal": "federal",
+    labels = {"wma": "Fish and Game (WMA)", "forest": "state forest", "park": "park/recreation area", "federal": "federal",
               "town": "town/county", "trust": "land trust (open)"}
     print("Done in", round((time.time() - started) / 60, 1), "minutes")
     print("Parcels saved: " + ", ".join(f"{counts.get(k, 0)} {v}" for k, v in labels.items()))

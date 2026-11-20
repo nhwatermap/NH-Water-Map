@@ -77,8 +77,8 @@ main{position:relative;flex:1;min-height:0}
 .toolbar{position:absolute;left:3.4rem;top:.75rem;z-index:560;display:flex;gap:.5rem;align-items:flex-start;flex-wrap:wrap;max-width:calc(100% - 4.4rem);pointer-events:none}
 .toolbar > *{pointer-events:auto}
 .layers{background:var(--panel);border:1px solid var(--line);border-radius:8px;max-width:min(300px,100%);font-size:.9rem}
-.layers > button{font:inherit;font-weight:600;background:transparent;border:0;color:var(--ink);padding:.5rem .8rem;cursor:pointer;width:100%;text-align:left;display:flex;justify-content:space-between;gap:1rem}
-.layers > button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.layers > .menu-btn{font:inherit;font-weight:600;background:transparent;border:0;color:var(--ink);padding:.5rem .8rem;cursor:pointer;width:100%;text-align:left;display:flex;justify-content:space-between;gap:1rem}
+.layers > .menu-btn:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .layers-body{padding:0 .8rem .6rem;display:none}
 .layers.open .layers-body{display:block}
 .layer-row{display:flex;gap:.55rem;align-items:flex-start;padding:.45rem 0;border-top:1px solid var(--line);cursor:pointer}
@@ -243,23 +243,28 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:1rem 0}
   <div class="legend" id="legend"></div>
   <div class="toolbar">
   <div class="layers" id="layers">
-    <button id="layersBtn" aria-expanded="false" aria-controls="layersBody"><span>Layers</span><span aria-hidden="true">▾</span></button>
+    <button class="menu-btn" aria-expanded="false" aria-controls="layersBody"><span>💧 Water</span><span aria-hidden="true">▾</span></button>
     <div class="layers-body" id="layersBody">
+      <label class="layer-row"><input type="checkbox" data-layer="mine" data-default="on"><span class="acc-icon" style="background:#c0392b;border-radius:50% 50% 50% 0;transform:rotate(-45deg)"></span><span><b>My markers</b><small>Spots you’ve saved. They’re stored only in this browser on this device.</small></span></label>
+      <label class="layer-row"><input type="checkbox" data-layer="tides" data-default="on"><span class="acc-icon tide" data-icon="tide"></span><span><b>Tides</b><small>Seacoast tide times and heights for the next 7 days. Live NOAA stations also show the current water level, water temp and wind.</small></span></label>
+      <label class="layer-row"><input type="checkbox" data-layer="ramp"><span class="acc-icon" data-icon="ramp"></span><span><b>Boat ramps</b><small>Launch sites for trailered boats, with a concrete, gravel or paved ramp.</small></span></label>
+      <label class="layer-row"><input type="checkbox" data-layer="cartop"><span class="acc-icon cartop" data-icon="cartop"></span><span><b>Cartop access</b><small>Hand-carry launches for canoes, kayaks and small boats you can lift off a car. No trailer ramp.</small></span></label>
+      <p class="layer-note">Zoomed out, sites show as small diamonds; zoom in for full icons. Access sites from NH Fish and Game. Not every site is open year-round; check before you go.</p>
+      <label class="layer-row"><input type="checkbox" data-layer="wetlands"><span class="wet-swatch" aria-hidden="true"><i></i><i></i><i></i></span><span><b>Marshes &amp; wetlands</b><small><span class="key marsh"></span>Orange: marsh and salt marsh (cattail, grass, sedge).<br><span class="key swamp"></span>Tan: shrub and wooded swamp.<br><span class="key weedy"></span>Striped green: weedy ponds and shallows (lily pads, pondweed, floating plants).</small><small id="wetZoomNote">Zoom in to about town level to see the shading.</small></span></label>
+      <p class="layer-note">Wetlands from the U.S. Fish and Wildlife Service National Wetlands Inventory. Mapped from aerial photos and may be years old; boundaries are approximate and many are on private land. Tap a wetland to see what it is.</p>
+    </div>
+  </div>
+  <div class="layers" id="landLayers">
+    <button class="menu-btn" aria-expanded="false" aria-controls="landBody"><span>🌲 Land</span><span aria-hidden="true">▾</span></button>
+    <div class="layers-body" id="landBody">
       <fieldset class="map-style"><legend>Map style</legend>
         <label><input type="radio" name="basemap" value="esri"> Topo (Esri)</label>
         <label><input type="radio" name="basemap" value="usgsTopo"> USGS topo</label>
         <label><input type="radio" name="basemap" value="usgsSat"> Satellite (USGS)</label>
         <small id="satNote" class="layer-note" style="flex-basis:100%;margin:0" aria-live="polite"></small>
       </fieldset>
-      <label class="layer-row"><input type="checkbox" data-layer="mine" data-default="on"><span class="acc-icon" style="background:#c0392b;border-radius:50% 50% 50% 0;transform:rotate(-45deg)"></span><span><b>My markers</b><small>Spots you’ve saved. They’re stored only in this browser on this device.</small></span></label>
-      <label class="layer-row"><input type="checkbox" data-layer="tides" data-default="on"><span class="acc-icon tide" data-icon="tide"></span><span><b>Tides</b><small>Seacoast tide times and heights for the next 7 days. Live NOAA stations also show the current water level, water temp and wind.</small></span></label>
-      <label class="layer-row"><input type="checkbox" data-layer="ramp"><span class="acc-icon" data-icon="ramp"></span><span><b>Boat ramps</b><small>Launch sites for trailered boats, with a concrete, gravel or paved ramp.</small></span></label>
-      <label class="layer-row"><input type="checkbox" data-layer="cartop"><span class="acc-icon cartop" data-icon="cartop"></span><span><b>Cartop access</b><small>Hand-carry launches for canoes, kayaks and small boats you can lift off a car. No trailer ramp.</small></span></label>
-      <p class="layer-note">Zoomed out, sites show as small diamonds; zoom in for full icons. Access sites from NH Fish and Game. Not every site is open year-round; check before you go.</p>
-      <label class="layer-row"><input type="checkbox" data-layer="lands"><span class="land-swatch" aria-hidden="true"><i class="wma"></i><i class="forest"></i><i class="park"></i></span><span><b>Public land</b><small><span class="key lk-wma"></span>Fish and Game land (WMAs)<br><span class="key lk-forest"></span>State forest or state land<br><span class="key lk-park"></span>State park (red hatching)<br><span class="key lk-federal"></span>Federal: national forest, wildlife refuge, Army Corps flood control land<br><span class="key lk-town"></span>Town or county land (zoom in)<br><span class="key lk-trust"></span>Land trust land open to the public (zoom in)</small><small class="caution-mini">Shows who owns and manages land, <b>not</b> whether hunting is allowed. Always check current rules for the property.</small></span></label>
+      <label class="layer-row"><input type="checkbox" data-layer="lands"><span class="land-swatch" aria-hidden="true"><i class="wma"></i><i class="forest"></i><i class="park"></i></span><span><b>Public land</b><small><span class="key lk-wma"></span>Fish and Game land (WMAs)<br><span class="key lk-forest"></span>State forest or state land<br><span class="key lk-park"></span>Park or recreation area: state, federal or town (red hatching)<br><span class="key lk-federal"></span>Federal: national forest, wildlife refuge, Army Corps flood control land<br><span class="key lk-town"></span>Town or county land (zoom in)<br><span class="key lk-trust"></span>Land trust land open to the public (zoom in)</small><small class="caution-mini">Shows who owns and manages land, <b>not</b> whether hunting is allowed. Always check current rules for the property.</small></span></label>
       <p class="layer-note">Public land from NH GRANIT, updated by the state about twice a year. Private land under conservation easements isn’t shown, since it’s usually not open to the public. Tap a parcel for details.</p>
-      <label class="layer-row"><input type="checkbox" data-layer="wetlands"><span class="wet-swatch" aria-hidden="true"><i></i><i></i><i></i></span><span><b>Marshes &amp; wetlands</b><small><span class="key marsh"></span>Orange: marsh and salt marsh (cattail, grass, sedge).<br><span class="key swamp"></span>Tan: shrub and wooded swamp.<br><span class="key weedy"></span>Striped green: weedy ponds and shallows (lily pads, pondweed, floating plants).</small><small id="wetZoomNote">Zoom in to about town level to see the shading.</small></span></label>
-      <p class="layer-note">Wetlands from the U.S. Fish and Wildlife Service National Wetlands Inventory. Mapped from aerial photos and may be years old; boundaries are approximate and many are on private land. Tap a wetland to see what it is.</p>
     </div>
   </div>
     <button class="add-btn" id="addBtn">📍 Add marker</button>
@@ -642,7 +647,7 @@ const WetlandLayer = L.TileLayer.extend({
 });
 const wetlands = new WetlandLayer('', { tileSize: 256, minZoom: WET_MIN_ZOOM, maxZoom: 18, opacity: 1,
   attribution: 'Wetlands: U.S. Fish &amp; Wildlife Service NWI' });
-map.attributionControl.addAttribution('Page v30 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
+map.attributionControl.addAttribution('Page v32 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
 // A slow or failed square is retried up to twice (after 2 s, then 5 s). We never switch to the
 // server's standard green colors; a square that still fails just stays blank.
 wetlands.on('tileerror', e => {
@@ -875,7 +880,7 @@ const LAND_STYLE = {
   park:    { fill: 'rgba(192,57,43,.10)', edge: 'rgba(192,57,43,.95)', w: 2, hatch: true }
 };
 const LAND_ORDER = ['town', 'trust', 'forest', 'federal', 'wma', 'park'];
-const LAND_LABEL = { wma: 'Fish and Game land (WMA)', forest: 'State forest or state land', park: 'State park',
+const LAND_LABEL = { wma: 'Fish and Game land (WMA)', forest: 'State forest or state land', park: 'Park or recreation area',
   federal: 'Federal land', town: 'Town or county land', trust: 'Land trust land, open to the public' };
 let hatchTile = null;
 function redHatch(ctx) {
@@ -1545,11 +1550,12 @@ document.querySelectorAll('[data-layer]').forEach(cb => {
   cb.checked = saved === null ? cb.dataset.default === 'on' : saved === '1';
   cb.addEventListener('change', () => setLayer(cb.dataset.layer, cb.checked));
 });
-document.getElementById('layersBtn').addEventListener('click', () => {
-  const box = document.getElementById('layers'), open = !box.classList.contains('open');
+document.querySelectorAll('.menu-btn').forEach(btn => btn.addEventListener('click', () => {
+  const box = btn.closest('.layers'), open = !box.classList.contains('open');
+  document.querySelectorAll('.layers.open').forEach(o => { o.classList.remove('open'); o.querySelector('.menu-btn').setAttribute('aria-expanded', 'false'); });
   box.classList.toggle('open', open);
-  document.getElementById('layersBtn').setAttribute('aria-expanded', open);
-});
+  btn.setAttribute('aria-expanded', open);
+}));
 
 fetch('data.json?v=' + Date.now())
   .then(r => { if (!r.ok) throw new Error('data.json not found yet'); return r.json(); })
