@@ -60,6 +60,22 @@ def all_ids():
     return sorted(ids)
 
 
+def server_count():
+    """The server's own count for the whole area, as an independent check."""
+    x0, y0, x1, y1 = BBOX
+    box = {"xmin": x0, "ymin": y0, "xmax": x1, "ymax": y1, "spatialReference": {"wkid": 4326}}
+    out = call({"where": WHERE, "geometry": json.dumps(box), "geometryType": "esriGeometryEnvelope",
+                "inSR": 4326, "spatialRel": "esriSpatialRelIntersects", "returnCountOnly": "true"})
+    return out.get("count")
+
+
+def object_id(feature, id_field):
+    attrs = feature.get("attributes") or {}
+    if id_field and id_field in attrs:
+        return attrs[id_field]
+    return next((v for k, v in attrs.items() if k.split(".")[-1].upper() == "OBJECTID"), None)
+
+
 def classify(attrs):
     """m = marsh / salt marsh, s = shrub or wooded swamp, w = weedy pond or shallows."""
     get = lambda k: next((v for key, v in attrs.items() if key.split(".")[-1].upper() == k), None)
@@ -96,22 +112,46 @@ def pack_ring(ring):
 
 def main():
     started = time.time()
+    print("Asking the server how many matching wetlands there are…")
+    expected = server_count()
+    print(f"Server count: {expected}")
     print("Finding wetlands in and around New Hampshire…")
     ids = all_ids()
     print(f"Found {len(ids)} wetlands to download")
 
     chunks, counts = {}, {"m": 0, "s": 0, "w": 0}
-    for b in range(0, len(ids), BATCH):
-        part = ids[b:b + BATCH]
+    received, not_drawable = set(), 0
+
+    def fetch(part):
         out = call({"objectIds": ",".join(map(str, part)), "outFields": "*", "returnGeometry": "true",
                     "outSR": 4326, "maxAllowableOffset": SIMPLIFY, "geometryPrecision": 5})
-        for f in out.get("features", []):
+        id_field = out.get("objectIdFieldName")
+        feats = out.get("features", [])
+        for f in feats:
+            oid = object_id(f, id_field)
+            if oid is not None:
+                received.add(oid)
+        return feats
+
+    def batches():
+        for b in range(0, len(ids), BATCH):
+            yield ids[b:b + BATCH]
+        # Anything that didn't come back gets retried in small batches, twice
+        for attempt in (1, 2):
+            missing = [i for i in ids if i not in received]
+            if not missing:
+                return
+            print(f"  retrying {len(missing)} that didn't come back (attempt {attempt})")
+            for b in range(0, len(missing), 100):
+                yield missing[b:b + 100]
+
+    for part in batches():
+        for f in fetch(part):
             c = classify(f.get("attributes") or {})
             rings = (f.get("geometry") or {}).get("rings") or []
-            if not c or not rings:
-                continue
-            packed = [p for p in (pack_ring(r) for r in rings) if p]
-            if not packed:
+            packed = [p for p in (pack_ring(r) for r in rings) if p] if c else []
+            if not c or not packed:
+                not_drawable += 1
                 continue
             xs = [x for r in rings for x, _ in r]
             ys = [y for r in rings for _, y in r]
@@ -122,8 +162,7 @@ def main():
             bx = ch["box"]
             bx[0], bx[1], bx[2], bx[3] = min(bx[0], min(xs)), min(bx[1], min(ys)), max(bx[2], max(xs)), max(bx[3], max(ys))
             counts[c[0]] += 1
-        done = min(b + BATCH, len(ids))
-        print(f"  downloaded {done}/{len(ids)}")
+        print(f"  downloaded {len(received)}/{len(ids)}")
         time.sleep(0.5)
 
     # Write the chunks and an index of where each one is
@@ -142,8 +181,12 @@ def main():
         if size > biggest[1]:
             biggest = (key, size)
         index[key] = [round(v, 4) for v in ch["box"]] + [len(ch["f"]), size]
+    saved = counts["m"] + counts["s"] + counts["w"]
+    missing = len([i for i in ids if i not in received])
+    check = {"serverCount": expected, "found": len(ids), "downloaded": len(received), "saved": saved,
+             "notDrawable": not_drawable, "missing": missing}
     meta = {"built": datetime.now(timezone.utc).isoformat(), "source": "U.S. Fish and Wildlife Service National Wetlands Inventory",
-            "counts": {"marsh": counts["m"], "swamp": counts["s"], "weedy": counts["w"]}, "chunks": index}
+            "counts": {"marsh": counts["m"], "swamp": counts["s"], "weedy": counts["w"]}, "check": check, "chunks": index}
     with open(os.path.join(OUT, "index.json"), "w") as fh:
         json.dump(meta, fh, separators=(",", ":"))
 
@@ -152,6 +195,19 @@ def main():
     print(f"Wetlands saved: {counts['m']} marsh, {counts['s']} swamp, {counts['w']} weedy pond/shallows")
     print(f"Chunks: {len(chunks)}; total {mb(total)}; average {mb(total / max(1, len(chunks)))}; "
           f"largest {mb(biggest[1])} (chunk {biggest[0]})")
+    # Final accounting: every wetland the server has should be found, downloaded and saved
+    problems = []
+    if expected is not None and len(ids) < expected * 0.995:
+        problems.append(f"found {expected - len(ids)} fewer than the server's count")
+    if missing > len(ids) * 0.005:
+        problems.append(f"{missing} never came back from the server")
+    if not_drawable > len(ids) * 0.01:
+        problems.append(f"{not_drawable} had no usable shape (more than expected)")
+    verdict = "Everything accounted for ✔" if not problems else "PROBLEM: " + "; ".join(problems)
+    print(f"Check: server count {expected} · found {len(ids)} · downloaded {len(received)} · saved {saved} · "
+          f"not drawable {not_drawable} · missing {missing} → {verdict}")
+    if problems:
+        raise SystemExit(1)  # red X in GitHub, and nothing gets saved
 
 
 if __name__ == "__main__":
