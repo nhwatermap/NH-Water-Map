@@ -245,7 +245,8 @@ main{position:relative;flex:1;min-height:0}
       <label class="layer-row"><input type="checkbox" data-layer="cartop"><span class="acc-icon cartop" data-icon="cartop"></span><span><b>Cartop access</b><small>Hand-carry launches for canoes, kayaks and small boats you can lift off a car. No trailer ramp.</small></span></label>
       <p class="layer-note">Zoomed out, sites show as small diamonds; zoom in for full icons. Access sites from NH Fish and Game. Not every site is open year-round; check before you go.</p>
       <label class="layer-row"><input type="checkbox" data-layer="wetlands"><span class="wet-swatch" aria-hidden="true"><i></i><i></i><i></i></span><span><b>Marshes &amp; wetlands</b><small><span class="key marsh"></span>Orange: marsh and salt marsh (cattail, grass, sedge).<br><span class="key swamp"></span>Tan: shrub and wooded swamp.<br><span class="key weedy"></span>Striped green: weedy ponds and shallows (lily pads, pondweed, floating plants).</small><small id="wetZoomNote">Zoom in to about town level to see the shading.</small></span></label>
-      <p class="layer-note">Wetlands from the U.S. Fish and Wildlife Service National Wetlands Inventory. Mapped from aerial photos and may be years old; boundaries are approximate and many are on private land.</p>
+      <p class="layer-note">Wetlands from the U.S. Fish and Wildlife Service National Wetlands Inventory. Mapped from aerial photos and may be years old; boundaries are approximate and many are on private land. Tap a wetland to see what it is.</p>
+      <label class="layer-note" style="display:flex;gap:.4rem;align-items:center;cursor:pointer"><input type="checkbox" id="wetCompare"> Compare: draw from the Fish and Wildlife Service server instead</label>
     </div>
   </div>
     <button class="add-btn" id="addBtn">📍 Add marker</button>
@@ -423,7 +424,7 @@ function draw() {
     const lake = s.waterType === 'lake';
     const opts = { weight: stale ? 2 : 1, color: stale ? edge : 'rgba(0,0,0,.45)', fillColor: col, fillOpacity: stale ? 0 : .9 };
     const m = lake
-      ? L.circleMarker([s.lat, s.lon], { radius: 8, ...opts })
+      ? L.circleMarker([s.lat, s.lon], { radius: 8, bubblingMouseEvents: false, ...opts })
       : L.marker([s.lat, s.lon], { icon: L.divIcon({ className: '', iconSize: [16, 16], iconAnchor: [8, 8],
           html: `<div style="width:14px;height:14px;border-radius:2px;background:${fill};border:${stale ? 2 : 1}px solid ${stale ? edge : 'rgba(0,0,0,.45)'}"></div>` }) });
     const last = s[key + 'Time'];
@@ -628,7 +629,7 @@ const WetlandLayer = L.TileLayer.extend({
 });
 const wetlands = new WetlandLayer('', { tileSize: 256, minZoom: WET_MIN_ZOOM, maxZoom: 18, opacity: 1,
   attribution: 'Wetlands: U.S. Fish &amp; Wildlife Service NWI' });
-map.attributionControl.addAttribution('Page v28 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
+map.attributionControl.addAttribution('Page v29 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
 // A slow or failed square is retried up to twice (after 2 s, then 5 s). We never switch to the
 // server's standard green colors; a square that still fails just stays blank.
 wetlands.on('tileerror', e => {
@@ -639,6 +640,187 @@ wetlands.on('tileerror', e => {
   setTimeout(() => { img.dataset.retrying = ''; img.src = wetlands.getTileUrl(e.coords) + '&try=' + (n + 1); }, n ? 5000 : 2000);
 });
 const overlayLayers = { wetlands };
+
+// ---------- Wetlands drawn from our own files (wetlands/ folder, built by "Build wetlands") ----------
+const WET_DIR = 'wetlands/';
+let wetIndex = null, wetIndexP = null;
+const wetChunks = new Map();
+function loadWetIndex() {
+  return wetIndexP || (wetIndexP = fetch(WET_DIR + 'index.json')
+    .then(r => { if (!r.ok) throw new Error('no wetlands files'); return r.json(); })
+    .then(d => (wetIndex = d))
+    .catch(e => { wetIndexP = null; throw e; }));
+}
+function decodeWet([c, a, code, rings]) {
+  let minx = Infinity, miny = Infinity, maxx = -Infinity, maxy = -Infinity;
+  const rs = rings.map(r => {
+    const out = new Float64Array(r.length);
+    let x = 0, y = 0;
+    for (let i = 0; i < r.length; i += 2) {
+      x += r[i]; y += r[i + 1];
+      const lon = x / 1e5, lat = y / 1e5;
+      out[i] = lon; out[i + 1] = lat;
+      if (lon < minx) minx = lon; if (lon > maxx) maxx = lon; if (lat < miny) miny = lat; if (lat > maxy) maxy = lat;
+    }
+    return out;
+  });
+  return { c, a, code, rings: rs, bb: [minx, miny, maxx, maxy] };
+}
+function loadChunk(key) {
+  if (!wetChunks.has(key)) wetChunks.set(key, fetch(WET_DIR + 'c_' + key + '.json')
+    .then(r => { if (!r.ok) throw new Error('chunk ' + key); return r.json(); })
+    .then(d => d.f.map(decodeWet))
+    .catch(e => { wetChunks.delete(key); throw e; }));
+  return wetChunks.get(key);
+}
+const chunksFor = (w, s, e, n) => Object.entries(wetIndex.chunks)
+  .filter(([, b]) => b[0] <= e && b[2] >= w && b[1] <= n && b[3] >= s).map(([k]) => k);
+const mercX = (lon, W) => (lon + 180) / 360 * W;
+const mercY = (lat, W) => { const r = lat * Math.PI / 180; return (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * W; };
+const unX = (x, W) => x / W * 360 - 180;
+const unY = (y, W) => Math.atan(Math.sinh(Math.PI * (1 - 2 * y / W))) * 180 / Math.PI;
+const WET_STYLE = {
+  s: { fill: 'rgba(217,183,126,.47)', edge: 'rgba(176,140,84,.63)' },
+  m: { fill: 'rgba(232,130,42,.65)', edge: 'rgba(196,98,18,.86)' },
+  w: { fill: 'rgba(150,196,120,.41)', edge: 'rgba(96,150,70,.6)' }
+};
+let stripeTile = null;
+function stripes(ctx) {
+  if (!stripeTile) {
+    stripeTile = document.createElement('canvas'); stripeTile.width = stripeTile.height = 8;
+    const c = stripeTile.getContext('2d');
+    c.strokeStyle = 'rgba(46,112,52,.9)'; c.lineWidth = 1.4;
+    c.beginPath(); c.moveTo(0, 8); c.lineTo(8, 0); c.moveTo(-2, 2); c.lineTo(2, -2); c.moveTo(6, 10); c.lineTo(10, 6); c.stroke();
+  }
+  return ctx.createPattern(stripeTile, 'repeat');  // a fresh pattern for each drawing surface
+}
+const WetLocal = L.GridLayer.extend({
+  createTile(coords, done) {
+    const size = this.getTileSize(), dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const cv = document.createElement('canvas');
+    cv.width = size.x * dpr; cv.height = size.y * dpr;
+    const W = 256 * Math.pow(2, coords.z), x0 = coords.x * size.x, y0 = coords.y * size.y;
+    const w = unX(x0, W), e = unX(x0 + size.x, W), n = unY(y0, W), s = unY(y0 + size.y, W);
+    loadWetIndex()
+      .then(() => Promise.all(chunksFor(w, s, e, n).map(loadChunk)))
+      .then(lists => {
+        const ctx = cv.getContext('2d');
+        ctx.scale(dpr, dpr);
+        ctx.lineWidth = coords.z >= 15 ? 0.8 : 0.5;
+        const feats = lists.flat().filter(f => f.bb[0] <= e && f.bb[2] >= w && f.bb[1] <= n && f.bb[3] >= s);
+        let pattern = null;
+        for (const cls of ['s', 'm', 'w']) {           // swamp underneath, then marsh, weedy on top
+          const st = WET_STYLE[cls];
+          for (const f of feats) {
+            if (f.c !== cls) continue;
+            ctx.beginPath();
+            for (const r of f.rings) {
+              for (let i = 0; i < r.length; i += 2) {
+                const px = mercX(r[i], W) - x0, py = mercY(r[i + 1], W) - y0;
+                i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+              }
+              ctx.closePath();
+            }
+            ctx.fillStyle = st.fill; ctx.fill('evenodd');
+            if (cls === 'w') { ctx.fillStyle = pattern || (pattern = stripes(ctx)); ctx.fill('evenodd'); }
+            ctx.strokeStyle = st.edge; ctx.stroke();
+          }
+        }
+        done(null, cv);
+      })
+      .catch(err => done(err, cv));
+    return cv;
+  }
+});
+const wetLocal = new WetLocal({ tileSize: 256, minZoom: WET_MIN_ZOOM, maxZoom: 18, attribution: 'Wetlands: U.S. Fish &amp; Wildlife Service NWI' });
+const wetServer = wetlands;
+overlayLayers.wetlands = wetLocal;
+
+// Use the server's drawing instead (for comparing, or if our files are missing)
+function useWetSource(server) {
+  const next = server ? wetServer : wetLocal, prev = overlayLayers.wetlands;
+  if (next === prev) return;
+  const on = !!prev._map;
+  if (on) map.removeLayer(prev);
+  overlayLayers.wetlands = next;
+  if (on) next.addTo(map);
+  const cb = document.getElementById('wetCompare');
+  if (cb) cb.checked = server;
+}
+loadWetIndex().catch(() => useWetSource(true));  // no wetlands folder yet: keep using the server
+
+// ---------- Tap a wetland to see what it is ----------
+const NWI_SYSTEM = { P: 'Freshwater', L: 'Lake', E: 'Tidal (brackish or salt)', M: 'Ocean', R: 'River' };
+const NWI_CLASS = { EM: 'marsh (cattail, grass, sedge)', SS: 'shrub swamp', FO: 'wooded swamp', AB: 'aquatic plants (lily pads, pondweed)',
+  UB: 'open water', US: 'shore or mud flat', RB: 'rocky bottom', RS: 'rocky shore', SB: 'streambed' };
+const NWI_WATER = {
+  A: 'Temporarily flooded (briefly in the growing season)', B: 'Seasonally saturated (soggy, rarely standing water)',
+  C: 'Seasonally flooded (standing water early in the season, often dry by late summer)',
+  D: 'Continuously saturated', E: 'Seasonally flooded or saturated (wet much of the season)',
+  F: 'Semipermanently flooded (standing water most years, through the growing season)',
+  G: 'Intermittently exposed (under water almost all the time)', H: 'Permanently flooded',
+  J: 'Intermittently flooded (only after unusual rains)', K: 'Artificially flooded (water level controlled by people)',
+  L: 'Subtidal (always covered by tide)', M: 'Irregularly exposed (uncovered only at the lowest tides)',
+  N: 'Regularly flooded by the tide', P: 'Irregularly flooded by the tide (only the higher tides)',
+  R: 'Seasonally flooded, freshwater tidal', S: 'Temporarily flooded, freshwater tidal', T: 'Semipermanently flooded, freshwater tidal',
+  V: 'Permanently flooded, freshwater tidal'
+};
+const NWI_MOD = { b: 'Made or flooded by beavers', d: 'Partly drained or ditched', f: 'Farmed', h: 'Diked or impounded (held back by a dam or dike)',
+  r: 'Artificial bottom', s: 'Spoil (dredged material)', x: 'Dug out (excavated)' };
+function decodeNwi(code) {
+  const out = { system: NWI_SYSTEM[code[0]] || '', classes: [], water: '', mods: [] };
+  const cls = code.match(/EM|SS|FO|AB|UB|US|RB|RS|SB/g) || [];
+  out.classes = [...new Set(cls)].map(c => NWI_CLASS[c]).filter(Boolean);
+  const m = code.match(/([A-Z])([a-z]*)$/);
+  if (m && NWI_WATER[m[1]] && !/^(EM|SS|FO|AB|UB|US|RB|RS|SB)$/.test(code.slice(-2))) out.water = NWI_WATER[m[1]];
+  if (m) out.mods = [...m[2]].map(ch => NWI_MOD[ch]).filter(Boolean);
+  return out;
+}
+function wetName(f) {
+  if (f.c === 'w') return f.code.startsWith('L') ? 'Weedy lake shallows' : 'Weedy pond';
+  if (f.c === 'm') return f.code.startsWith('E') ? 'Salt marsh' : 'Marsh';
+  return /FO/.test(f.code) && !/SS/.test(f.code) ? 'Wooded swamp' : /SS/.test(f.code) && !/FO/.test(f.code) ? 'Shrub swamp' : 'Shrub and wooded swamp';
+}
+function inWet(f, lon, lat) {
+  if (lon < f.bb[0] || lon > f.bb[2] || lat < f.bb[1] || lat > f.bb[3]) return false;
+  let inside = false;
+  for (const r of f.rings) {
+    for (let i = 0, j = r.length - 2; i < r.length; j = i, i += 2) {
+      const xi = r[i], yi = r[i + 1], xj = r[j], yj = r[j + 1];
+      if ((yi > lat) !== (yj > lat) && lon < (xj - xi) * (lat - yi) / (yj - yi) + xi) inside = !inside;
+    }
+  }
+  return inside;
+}
+async function identifyWetland(latlng) {
+  if (!wetIndex) return false;
+  const lon = latlng.lng, lat = latlng.lat;
+  const keys = chunksFor(lon, lat, lon, lat).filter(k => wetChunks.has(k));
+  const hits = (await Promise.all(keys.map(k => wetChunks.get(k).catch(() => [])))).flat().filter(f => inWet(f, lon, lat));
+  if (!hits.length) return false;
+  const rank = { w: 0, m: 1, s: 2 };
+  hits.sort((a, b) => rank[a.c] - rank[b.c] || (a.bb[2] - a.bb[0]) * (a.bb[3] - a.bb[1]) - (b.bb[2] - b.bb[0]) * (b.bb[3] - b.bb[1]));
+  const f = hits[0], d = decodeNwi(f.code);
+  const stat = (label, val, sub) => `<div class="stat${sub === 'wide' ? ' wide' : ''}"><span>${label}</span><b>${val}</b></div>`;
+  document.getElementById('detailBody').innerHTML = `<span class="badge">Wetland</span>
+    <h2>${esc(wetName(f))}</h2>
+    <p class="sub">${esc([d.system, ...d.classes].filter(Boolean).join(' · '))}</p>
+    <div class="stats">
+      ${stat('Size', f.a != null ? (f.a >= 10 ? Math.round(f.a) : f.a) + ' acres' : '—')}
+      ${stat('Inventory code', esc(f.code))}
+    </div>
+    ${d.water ? `<p><b>Water:</b> ${esc(d.water)}</p>` : ''}
+    ${d.mods.length ? `<p><b>Also:</b> ${esc(d.mods.join('; '))}</p>` : ''}
+    <div class="mk-actions"><button class="primary" id="wetMark">📍 Mark this spot</button></div>
+    <p class="layer-note">From the U.S. Fish and Wildlife Service National Wetlands Inventory, mapped from aerial photos that may be years old. Boundaries are approximate and many wetlands are on private land.</p>`;
+  document.getElementById('wetMark').onclick = () => { map.panTo(latlng); startPlacing(); };
+  document.getElementById('detail').classList.add('show');
+  return true;
+}
+map.on('click', e => {
+  if (placing || overlayLayers.wetlands !== wetLocal || !wetLocal._map || map.getZoom() < WET_MIN_ZOOM) return;
+  identifyWetland(e.latlng);
+});
 
 // ---------- Tides (NOAA) ----------
 const tideLayer = L.layerGroup();
@@ -1181,6 +1363,8 @@ function watchLoading(layer, key, text) {
   layer.on('remove', () => { pending.clear(); update(); });
 }
 watchLoading(wetlands, 'wet', 'Loading wetland shading');
+watchLoading(wetLocal, 'wet', 'Loading wetland shading');
+document.getElementById('wetCompare').addEventListener('change', e => useWetSource(e.target.checked));
 watchLoading(BASEMAPS.usgsTopo, 'base', 'Loading map');
 // Satellite: watch whichever USGS source is in use
 const _useSat = useSatSource;
