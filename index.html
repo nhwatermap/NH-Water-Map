@@ -205,6 +205,8 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:1rem 0}
 .mk-actions{display:flex;flex-wrap:wrap;gap:.5rem;margin:.8rem 0}
 .mk-actions .danger{color:#c0392b;border-color:#c0392b}
 .mk-notes{white-space:pre-wrap;margin:.6rem 0;line-height:1.45}
+.keep-list{margin:.4rem 0 .8rem;padding-left:1.2rem;line-height:1.45}
+.keep-list li{margin:.25rem 0}
 .mk-date{margin:.1rem 0 .2rem;font-weight:600}
 .mk-form input[type=date]{width:100%;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:.45rem .6rem;color-scheme:inherit}
 .mk-pin{width:30px;height:38px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.45))}
@@ -758,7 +760,7 @@ const WetlandLayer = L.TileLayer.extend({
 });
 const wetlands = new WetlandLayer('', { tileSize: 256, minZoom: WET_MIN_ZOOM, maxZoom: 18, opacity: 1,
   attribution: 'Wetlands: U.S. Fish &amp; Wildlife Service NWI' });
-map.attributionControl.addAttribution('Page v40 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
+map.attributionControl.addAttribution('Page v42 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
 // A slow or failed square is retried up to twice (after 2 s, then 5 s). We never switch to the
 // server's standard green colors; a square that still fails just stays blank.
 wetlands.on('tileerror', e => {
@@ -1207,7 +1209,12 @@ const MK_KEY = 'myMarkers-v1';
 let myMarkers = [];
 try { myMarkers = JSON.parse(localStorage.getItem(MK_KEY) || '[]'); } catch (e) { myMarkers = []; }
 function saveMarkers() {
-  try { localStorage.setItem(MK_KEY, JSON.stringify(myMarkers)); return true; }
+  try {
+    localStorage.setItem(MK_KEY, JSON.stringify(myMarkers));
+    localStorage.setItem('spots-changed', String(Date.now()));
+    if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => { });  // ask the browser not to clear our data
+    return true;
+  }
   catch (e) { alert('Your browser would not save the marker (private browsing or storage turned off).'); return false; }
 }
 map.createPane('mine').style.zIndex = 700;
@@ -1302,7 +1309,12 @@ function openMarkerForm(id, lat, lon) {
     let target;
     if (m) { Object.assign(m, rec); target = m; }
     else { target = { id: 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), lat, lon, locked: true, created: Date.now(), ...rec }; myMarkers.push(target); }
-    if (saveMarkers()) { drawMine(); openMarker(target.id); }
+    if (saveMarkers()) {
+      drawMine();
+      let shown = false; try { shown = localStorage.getItem('keep-safe-shown') === '1'; } catch (e) { }
+      if (!m && !shown) { try { localStorage.setItem('keep-safe-shown', '1'); } catch (e) { } openKeepSafe(target.id); }
+      else openMarker(target.id);
+    }
   });
   document.getElementById('detail').classList.add('show');
   const nameEl = document.getElementById('mkName'); nameEl.focus(); if (!m) nameEl.select();
@@ -1432,8 +1444,9 @@ function openMyList() {
       <ul class="spot-list">${rows}</ul>
       <div class="mk-actions"><button class="primary" id="shareShown">Share ${shown.length === myMarkers.length ? 'all' : 'these'} (${shown.length})</button></div>`
       : '<p>No saved spots yet. Tap <b>Add marker</b> to save your first one.</p>'}
-    <div class="mk-actions"><button id="backupBtn" ${myMarkers.length ? '' : 'disabled'}>Back up to file</button><button id="restoreBtn">Restore from file</button></div>
-    <p class="layer-note">Your spots are saved only in this browser. Use Share to send them to your phone or a friend, and back up to a file now and then for safekeeping.</p>`;
+    ${myMarkers.length ? backupStatusHTML() : ''}
+    <div class="mk-actions">${myMarkers.length ? '<button class="primary" id="linkBackupBtn">📨 Send myself a backup link</button>' : ''}<button id="backupBtn" ${myMarkers.length ? '' : 'disabled'}>Back up to a file</button><button id="restoreBtn">Restore from file</button><button id="restoreLinkBtn">Restore from a backup link</button></div>
+    <p><button class="info-btn" type="button" id="keepSafeBtn">ⓘ How to keep your spots safe</button></p>`;
   document.querySelectorAll('.chips button').forEach(b => b.onclick = () => { spotFilter = b.dataset.f; openMyList(); });
   document.querySelectorAll('.spot-list button').forEach(b => b.onclick = () => {
     const m = myMarkers.find(x => x.id === b.dataset.id);
@@ -1444,7 +1457,10 @@ function openMyList() {
   });
   const sh = document.getElementById('shareShown');
   if (sh) sh.onclick = () => openShare(shown, `Share ${shown.length} spot${shown.length === 1 ? '' : 's'}`);
-  document.getElementById('backupBtn').onclick = backupToFile;
+  document.getElementById('backupBtn').onclick = () => { backupToFile(); setTimeout(openMyList, 300); };
+  const lb = document.getElementById('linkBackupBtn'); if (lb) lb.onclick = sendBackupLink;
+  document.getElementById('keepSafeBtn').onclick = () => openKeepSafe();
+  document.getElementById('restoreLinkBtn').onclick = restoreFromLink;
   document.getElementById('restoreBtn').onclick = () => document.getElementById('restoreFile').click();
   document.getElementById('detail').classList.add('show');
 }
@@ -1542,6 +1558,7 @@ function backupToFile() {
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 1)], { type: 'application/json' }));
   a.download = 'my-spots-' + todayISO() + '.json';
+  markBackedUp();
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
@@ -2098,6 +2115,8 @@ function openAbout() {
     ${FEEDBACK_URL ? `<p><a href="${esc(FEEDBACK_URL)}" target="_blank" rel="noopener">Send feedback or report a problem</a></p>` : ''}
     <h3 class="imp-h">Where the data comes from</h3>
     <p class="layer-note" style="font-size:.85rem">River and lake gauges: USGS, U.S. Army Corps of Engineers, NH DES · Tides, seacoast temperatures and buoys: NOAA, Great Bay NERR via NERACOOS · Weather: NOAA GFS model · Wetlands: U.S. Fish and Wildlife Service National Wetlands Inventory · Public land and boat access: NH GRANIT and NH Fish and Game · Map: USGS The National Map</p>
+    <h3 class="imp-h">Use it like an app</h3>
+    <p class="layer-note" style="font-size:.85rem"><b>iPhone:</b> in Safari, tap the Share button, then <b>Add to Home Screen</b>. <b>Android:</b> in Chrome, tap ⋮, then <b>Add to Home screen</b>. It opens like an app, and on iPhones it also protects your saved spots from Safari’s automatic clean-up.</p>
     <h3 class="imp-h">Please keep in mind</h3>
     <p class="layer-note" style="font-size:.85rem">Data can be wrong, late or missing. Not for navigation, flood or ice safety. Public land shown here is not permission to hunt or fish; always check current regulations and property rules. Saved spots stay private on your device.</p>`;
   document.getElementById('detail').classList.add('show');
@@ -2108,6 +2127,62 @@ document.getElementById('aboutBtn').addEventListener('click', openAbout);
 
 // First visit: disclaimer, then offer the tour
 if (!agreed()) showGate(offerTour); else offerTour();
+
+
+// ---------- Keeping saved spots safe ----------
+async function restoreFromLink() {
+  const text = prompt('Paste your backup or share link:');
+  if (!text) return;
+  const m = text.trim().match(/#import=([A-Za-z0-9_\-]+)/);
+  if (!m) { alert('That doesn’t look like a spots link from this map.'); return; }
+  try {
+    const list = await unpackMarkers(m[1]);
+    if (!list.length) throw new Error('empty');
+    showImport(list, 'a backup link');
+  } catch (e) { alert('That link looks incomplete or damaged.'); }
+}
+function markBackedUp() { try { localStorage.setItem('spots-backed-up', String(Date.now())); } catch (e) { } }
+function backupStatusHTML() {
+  let last = 0, changed = 0;
+  try { last = +localStorage.getItem('spots-backed-up') || 0; changed = +localStorage.getItem('spots-changed') || 0; } catch (e) { }
+  const when = last ? new Date(last).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : null;
+  if (!last) return `<div class="caution"><b>Not backed up yet.</b> Your spots live only in this browser. Send yourself a backup link or save a backup file so you can’t lose them.</div>`;
+  if (changed > last) return `<div class="caution"><b>Changes since your last backup</b> (${when}). Back up again to keep your newest spots safe.</div>`;
+  return `<p class="layer-note">✔ Backed up ${when}.</p>`;
+}
+async function sendBackupLink() {
+  let link;
+  try { link = pageBase() + '#import=' + await packMarkers(myMarkers); } catch (e) { alert('Sorry, this browser couldn’t make a backup link.'); return; }
+  const text = `My saved spots from NH Water Conditions (${myMarkers.length}). Open this link to restore them on any phone or computer.`;
+  if (navigator.share) {
+    try { await navigator.share({ title: 'My spots backup', text, url: link }); markBackedUp(); openMyList(); return; }
+    catch (e) { if (e && e.name === 'AbortError') return; }
+  }
+  try { await navigator.clipboard.writeText(link); markBackedUp(); alert('Backup link copied. Paste it into an email or text to yourself and keep it.'); openMyList(); }
+  catch (e) { openShare(myMarkers, 'Backup link for all your spots'); }
+}
+function openKeepSafe(afterId) {
+  document.getElementById('detailBody').innerHTML = `<h2>Keep your spots safe</h2>
+    <p>Your saved spots are stored <b>only in this browser on this device</b>. Nothing is uploaded, which keeps them private, but it also means they can be erased if:</p>
+    <ul class="keep-list">
+      <li>you’re in a <b>private or incognito</b> window (spots disappear when you close it)</li>
+      <li>you <b>clear your browsing history or website data</b></li>
+      <li>on an <b>iPhone</b>, you don’t open this map for about a week (Safari can clean up website data on its own)</li>
+      <li>you switch to a <b>new phone</b> or a different browser</li>
+    </ul>
+    <h3 class="imp-h">Two easy ways to protect them</h3>
+    <p><b>1. Send yourself a backup link</b> (easiest). It opens the share menu so you can text or email yourself a link with all your spots. If they’re ever lost, open that link and tap Add.</p>
+    <p><b>2. Save a backup file.</b> It’s a small file named like <b>my-spots-${todayISO()}.json</b>. On an iPhone it goes to the <b>Files app → Downloads</b>; on Android, to <b>Downloads</b>. To bring spots back, open My spots, tap <b>Restore from file</b> and pick it.</p>
+    <h3 class="imp-h">Also helpful</h3>
+    <p><b>Add this map to your Home Screen</b> (iPhone: Share → Add to Home Screen · Android: ⋮ → Add to Home screen). On iPhones that protects your spots from Safari’s weekly clean-up.</p>
+    <p><b>iPhone note:</b> the Home Screen version keeps its <b>own separate</b> spots from Safari. To move spots into it, send yourself a backup link, then in the Home Screen version open My spots → <b>Restore from a backup link</b> and paste it.</p>
+    <p class="layer-note">Back up again whenever you add or change spots. My spots shows when you last did.</p>
+    <div class="mk-actions">${myMarkers.length ? '<button class="primary" id="ksLink">📨 Send myself a backup link</button><button id="ksFile">Save a backup file</button>' : ''}<button id="ksDone">${afterId ? 'Got it' : 'Close'}</button></div>`;
+  document.getElementById('detail').classList.add('show');
+  const l = document.getElementById('ksLink'); if (l) l.onclick = sendBackupLink;
+  const f = document.getElementById('ksFile'); if (f) f.onclick = () => { backupToFile(); };
+  document.getElementById('ksDone').onclick = () => afterId ? openMarker(afterId) : document.getElementById('detail').classList.remove('show');
+}
 
 function updateWetNote() {
   document.getElementById('wetZoomNote').style.display = map.getZoom() < WET_MIN_ZOOM ? '' : 'none';
