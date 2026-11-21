@@ -54,7 +54,7 @@ h1{font-family:"Barlow Condensed","Arial Narrow",sans-serif;font-weight:600;font
 .status{margin-left:auto;display:flex;align-items:center;gap:.6rem;color:var(--muted);font-size:.9rem}
 .refresh{font:inherit;border:1px solid var(--line);background:transparent;color:var(--ink);border-radius:6px;padding:.3rem .7rem;cursor:pointer}
 main{position:relative;flex:1;min-height:0;overflow:hidden}
-#map{position:absolute;inset:0;background:var(--bg)}
+#map{position:absolute;inset:0;background:#dcd8c6}
 .legend{position:absolute;left:.75rem;bottom:.75rem;z-index:500;background:var(--panel);border:1px solid var(--line);
   border-radius:8px;padding:.6rem .8rem;max-width:min(300px,calc(100% - 1.5rem));font-size:.88rem}
 .legend strong{display:block;margin-bottom:.35rem}
@@ -308,6 +308,9 @@ h1.brand img{height:44px;width:auto;display:block}
 
 .menu-open .daybar,.menu-open .legend,.menu-open .busy{display:none!important}
 .menu-open .toolbar{z-index:900}
+.stn-swatch{width:22px;height:22px;border-radius:4px;flex:none;margin-top:.05rem;border:1.5px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4);background:#e9eef0;display:flex;align-items:center;justify-content:center;gap:3px}
+.stn-swatch i{width:7px;height:7px;background:#5aa877;border:1px solid rgba(0,0,0,.45)}
+.stn-swatch i:first-child{border-radius:50%;background:#4ea2c6}
 </style>
 </head>
 <body>
@@ -330,6 +333,7 @@ h1.brand img{height:44px;width:auto;display:block}
   <div class="layers" id="layers">
     <button class="menu-btn" aria-expanded="false" aria-controls="layersBody"><span>💧 Water</span><span aria-hidden="true">▾</span></button>
     <div class="layers-body" id="layersBody">
+      <label class="layer-row"><input type="checkbox" data-layer="stations" data-default="on"><span class="stn-swatch" aria-hidden="true"><i></i><i></i></span><span><b>Stations</b><small>River, lake and dam readings: the circles and squares. Turn off to see the map or weather layers underneath.</small></span></label>
       <label class="layer-row"><input type="checkbox" data-layer="mine" data-default="on"><span class="acc-icon" style="background:#c0392b;border-radius:50% 50% 50% 0;transform:rotate(-45deg)"></span><span><b>My markers</b><small>Spots you’ve saved. They’re stored only in this browser on this device.</small></span></label>
       <label class="layer-row"><input type="checkbox" data-layer="tides" data-default="on"><span class="acc-icon tide" data-icon="tide"></span><span><b>Tides</b><small>Seacoast tide times and heights for the next 7 days. Live NOAA stations also show the current water level, water temp and wind.</small></span></label>
       <label class="layer-row"><input type="checkbox" data-layer="ramp"><span class="acc-icon" data-icon="ramp"></span><span><b>Boat ramps</b><small>Launch sites for trailered boats, with a concrete, gravel or paved ramp.</small></span></label>
@@ -469,6 +473,13 @@ function setBasemap(key) {
   showSatNote();
 }
 markers.addTo(map);
+// Stations shrink when zoomed out so the map shows through, and grow back as you zoom in
+const stationSize = z => z <= 7 ? { r: 4, box: 7 } : z === 8 ? { r: 5, box: 9 } : z === 9 ? { r: 6.5, box: 11 } : { r: 8, box: 14 };
+let SZ = stationSize(map.getZoom());
+map.on('zoomend', () => {
+  const next = stationSize(map.getZoom());
+  if (next.r !== SZ.r) { SZ = next; if (typeof draw === 'function' && sites.length) draw(); }
+});
 
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 const fmt = (v, d = 1) => (v == null || isNaN(v)) ? '—' : Number(v).toFixed(d);
@@ -572,9 +583,9 @@ function draw() {
     const lake = s.waterType === 'lake';
     const opts = { weight: stale ? 2 : 1, color: stale ? edge : 'rgba(0,0,0,.45)', fillColor: col, fillOpacity: stale ? 0 : .9 };
     const m = lake
-      ? L.circleMarker([s.lat, s.lon], { radius: 8, bubblingMouseEvents: false, ...opts })
-      : L.marker([s.lat, s.lon], { icon: L.divIcon({ className: '', iconSize: [16, 16], iconAnchor: [8, 8],
-          html: `<div style="width:14px;height:14px;border-radius:2px;background:${fill};border:${stale ? 2 : 1}px solid ${stale ? edge : 'rgba(0,0,0,.45)'}"></div>` }) });
+      ? L.circleMarker([s.lat, s.lon], { radius: SZ.r, bubblingMouseEvents: false, ...opts })
+      : L.marker([s.lat, s.lon], { icon: L.divIcon({ className: '', iconSize: [SZ.box + 2, SZ.box + 2], iconAnchor: [SZ.box / 2 + 1, SZ.box / 2 + 1],
+          html: `<div style="width:${SZ.box}px;height:${SZ.box}px;border-radius:2px;background:${fill};border:${stale ? 2 : 1}px solid ${stale ? edge : 'rgba(0,0,0,.45)'}"></div>` }) });
     const last = s[key + 'Time'];
     m.bindTooltip(stale ? esc(s.name) + '<br>No recent reading' + (last ? ' (last: ' + when(last) + ')' : '') : tipText(s));
     m.on('click', () => openDetail(s));
@@ -777,7 +788,7 @@ const WetlandLayer = L.TileLayer.extend({
 });
 const wetlands = new WetlandLayer('', { tileSize: 256, minZoom: WET_MIN_ZOOM, maxZoom: 18, opacity: 1,
   attribution: 'Wetlands: U.S. Fish &amp; Wildlife Service NWI' });
-map.attributionControl.addAttribution('Page v44 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
+map.attributionControl.addAttribution('Page v45 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
 // A slow or failed square is retried up to twice (after 2 s, then 5 s). We never switch to the
 // server's standard green colors; a square that still fails just stays blank.
 wetlands.on('tileerror', e => {
@@ -788,6 +799,7 @@ wetlands.on('tileerror', e => {
   setTimeout(() => { img.dataset.retrying = ''; img.src = wetlands.getTileUrl(e.coords) + '&try=' + (n + 1); }, n ? 5000 : 2000);
 });
 const overlayLayers = { wetlands };
+overlayLayers.stations = markers;
 
 // ---------- Wetlands drawn from our own files (wetlands/ folder, built by "Build wetlands") ----------
 const WET_DIR = 'wetlands/';
@@ -2259,7 +2271,7 @@ fetch('data.json?v=' + Date.now())
     tideStations = (d.tides && d.tides.stations) || [];
     buildTides();
     buildAccess();
-    document.querySelectorAll('[data-layer]').forEach(cb => { if (cb.checked) setLayer(cb.dataset.layer, true); });
+    document.querySelectorAll('[data-layer]').forEach(cb => { if (cb.checked) setLayer(cb.dataset.layer, true); else if (cb.dataset.layer === 'stations') setLayer('stations', false); });
     draw();
     const count = src => sites.filter(s => s.source === src).length;
     document.getElementById('status').innerHTML = `<span class="full">${count('USGS')} USGS, ${count('Army Corps')} Army Corps, ${count('NHDES')} NH DES · updated ${when(d.updated)}</span><span class="short">${count('USGS') + count('Army Corps') + count('NHDES')} stations · ${when(d.updated)}</span>`;
