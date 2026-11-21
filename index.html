@@ -788,7 +788,7 @@ const WetlandLayer = L.TileLayer.extend({
 });
 const wetlands = new WetlandLayer('', { tileSize: 256, minZoom: WET_MIN_ZOOM, maxZoom: 18, opacity: 1,
   attribution: 'Wetlands: U.S. Fish &amp; Wildlife Service NWI' });
-map.attributionControl.addAttribution('Page v45 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
+map.attributionControl.addAttribution('Page v46 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
 // A slow or failed square is retried up to twice (after 2 s, then 5 s). We never switch to the
 // server's standard green colors; a square that still fails just stays blank.
 wetlands.on('tileerror', e => {
@@ -1790,12 +1790,14 @@ document.getElementById('dayNext').onclick = () => setWxDay(wxDay + 1);
 document.getElementById('dayToday').onclick = () => wx && setWxDay(wx.days.findIndex(x => x.kind === 'today'));
 document.querySelectorAll('input[name=wxshow]').forEach(r => r.addEventListener('change', () => { if (r.checked) { wxShow = r.value; wxTemp.redraw(); } }));
 function syncWxBar() {
-  const windOn = typeof wxWind !== 'undefined' && !!wxWind._map, snowOn = typeof wxSnow !== 'undefined' && !!wxSnow._map;
-  const migOn = typeof wxMig !== 'undefined' && !!wxMig._map;
-  mainEl.classList.toggle('wx-on', !!wxTemp._map || windOn || snowOn || migOn);
-  mainEl.classList.toggle('wx-mig-on', migOn);
+  // Ask the map itself: during a 'remove' event the layer still looks attached for a moment
+  const on = l => typeof l !== 'undefined' && map.hasLayer(l);
+  const tempOn = on(wxTemp), windOn = typeof wxWind !== 'undefined' && on(wxWind);
+  const snowOn = typeof wxSnow !== 'undefined' && on(wxSnow), migOn = typeof wxMig !== 'undefined' && on(wxMig);
+  mainEl.classList.toggle('wx-on', tempOn || windOn || snowOn || migOn);
+  mainEl.classList.toggle('wx-temp-on', tempOn);
   mainEl.classList.toggle('wx-snow-on', snowOn);
-  mainEl.classList.toggle('wx-temp-on', !!wxTemp._map);
+  mainEl.classList.toggle('wx-mig-on', migOn);
 }
 wxTemp.on('add remove', syncWxBar);
 document.querySelector('[data-layer="wxtemp"]').addEventListener('change', e => {
