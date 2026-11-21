@@ -324,6 +324,13 @@ h1.brand img{height:44px;width:auto;display:block}
   header .modes button{flex:none;padding:.3rem .5rem;font-size:.82rem}
   header .status{flex-basis:100%}
 }
+
+/* Phones: slimmer menu buttons so Water, Land and Weather share the first row */
+@media (max-width:640px){
+  .toolbar{left:3.1rem;max-width:calc(100% - 3.6rem);gap:.4rem}
+  .layers > .menu-btn{padding:.45rem .55rem;gap:.35rem;font-size:.88rem}
+  .add-btn{padding:.45rem .7rem;font-size:.88rem}
+}
 </style>
 </head>
 <body>
@@ -801,7 +808,7 @@ const WetlandLayer = L.TileLayer.extend({
 });
 const wetlands = new WetlandLayer('', { tileSize: 256, minZoom: WET_MIN_ZOOM, maxZoom: 18, opacity: 1,
   attribution: 'Wetlands: U.S. Fish &amp; Wildlife Service NWI' });
-map.attributionControl.addAttribution('Page v47 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
+map.attributionControl.addAttribution('Page v48 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
 // A slow or failed square is retried up to twice (after 2 s, then 5 s). We never switch to the
 // server's standard green colors; a square that still fails just stays blank.
 wetlands.on('tileerror', e => {
