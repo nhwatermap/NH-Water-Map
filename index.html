@@ -331,9 +331,20 @@ h1.brand img{height:44px;width:auto;display:block}
   .layers > .menu-btn{padding:.45rem .55rem;gap:.35rem;font-size:.88rem}
   .add-btn{padding:.45rem .7rem;font-size:.88rem}
 }
+
+.splash{position:fixed;inset:0;z-index:4000;background:radial-gradient(ellipse at center,#1c3324 0%,#0e1c14 70%);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1rem;padding:1.5rem;transition:opacity .45s ease}
+.splash img{width:min(560px,88vw);height:auto;filter:drop-shadow(0 6px 18px rgba(0,0,0,.55))}
+.splash p{margin:0;color:#d8bf73;font-size:clamp(.9rem,3.6vw,1.1rem);letter-spacing:.04em;text-align:center}
+.splash.gone{opacity:0;pointer-events:none}
+@media (prefers-reduced-motion: reduce){.splash{transition:none}}
+.card-banner{display:block;width:100%;max-width:440px;height:auto;margin:0 auto .8rem;border-radius:8px}
 </style>
 </head>
 <body>
+<div class="splash" id="splash" aria-hidden="true">
+  <img src="banner-lg.webp" alt="" width="1100" height="367">
+  <p>Water levels, marshes &amp; migration conditions</p>
+</div>
 <header>
   <h1 class="brand"><img src="banner.webp" alt="Wings &amp; Water" width="396" height="132"></h1>
   <div class="modes" role="group" aria-label="What to color the map by">
@@ -417,6 +428,7 @@ h1.brand img{height:44px;width:auto;display:block}
 </main>
 <div class="gate" id="gate" role="dialog" aria-modal="true" aria-labelledby="gateTitle" hidden>
   <div class="gate-card">
+    <img class="card-banner" src="banner-lg.webp" alt="Wings &amp; Water" width="1100" height="367">
     <h2 id="gateTitle">Before you use this map</h2>
     <div class="gate-text" tabindex="0">
       <p><b>Wings &amp; Water</b> is a free, unofficial map that gathers public data from government agencies (USGS, the U.S. Army Corps of Engineers, NOAA, NH DES, the U.S. Fish and Wildlife Service, NH Fish and Game and NH GRANIT) in one place. It is a planning aid only.</p>
@@ -808,7 +820,7 @@ const WetlandLayer = L.TileLayer.extend({
 });
 const wetlands = new WetlandLayer('', { tileSize: 256, minZoom: WET_MIN_ZOOM, maxZoom: 18, opacity: 1,
   attribution: 'Wetlands: U.S. Fish &amp; Wildlife Service NWI' });
-map.attributionControl.addAttribution('Page v48 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
+map.attributionControl.addAttribution('Page v49 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
 // A slow or failed square is retried up to twice (after 2 s, then 5 s). We never switch to the
 // server's standard green colors; a square that still fails just stays blank.
 wetlands.on('tileerror', e => {
@@ -2149,7 +2161,7 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && !document.
 function offerTour() {
   let seen = false; try { seen = localStorage.getItem('tour-seen') === '1'; } catch (e) { }
   if (seen) return;
-  document.getElementById('detailBody').innerHTML = `<h2>Welcome!</h2>
+  document.getElementById('detailBody').innerHTML = `<img class="card-banner" src="banner-lg.webp" alt="Wings &amp; Water" width="1100" height="367"><h2>Welcome!</h2>
     <p>Wings &amp; Water pulls together water levels, temperatures, tides, wetlands, public land and weather, updated twice a day. It covers <b>New Hampshire</b> to start, with more of the Northeast to come.</p>
     <div class="mk-actions"><button class="primary" id="tourYes">Show me around (1 minute)</button><button id="tourNo">Not now</button></div>
     <p class="layer-note">You can take the tour anytime from ⓘ About.</p>`;
@@ -2243,6 +2255,17 @@ function openKeepSafe(afterId) {
   m.addEventListener('scroll', upd, { passive: true }); window.addEventListener('resize', upd); setTimeout(upd, 300);
 })();
 
+
+// ---------- Opening splash: shown while the map loads, never longer ----------
+const splashStart = Date.now();
+function hideSplash() {
+  const el = document.getElementById('splash');
+  if (!el || el.classList.contains('gone')) return;
+  const wait = Math.max(0, 500 - (Date.now() - splashStart));      // at least half a second, so it doesn't flicker
+  setTimeout(() => { el.classList.add('gone'); setTimeout(() => el.remove(), 500); }, wait);
+}
+setTimeout(hideSplash, 4000);                                       // never longer than 4 seconds
+
 function updateWetNote() {
   document.getElementById('wetZoomNote').style.display = map.getZoom() < WET_MIN_ZOOM ? '' : 'none';
 }
@@ -2310,7 +2333,8 @@ fetch('data.json?v=' + Date.now())
   .catch(e => {
     document.getElementById('status').textContent = 'No data yet';
     showError('No readings yet. On GitHub, open the Actions tab and run “Update water data” once to create them.');
-  });
+  })
+  .finally(hideSplash);
 </script>
 </body>
 </html>
