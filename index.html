@@ -3,14 +3,24 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>NH Water Conditions</title>
+<title>Wings &amp; Water — water levels, marshes &amp; migration conditions</title>
+<meta name="description" content="Free map for New England hunters, anglers and paddlers: water levels vs. normal, marshes and wetlands, public land, boat access, tides and migration conditions. Starting with New Hampshire.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Wings &amp; Water">
+<meta property="og:description" content="Free map for New England hunters, anglers and paddlers: water levels vs. normal, marshes and wetlands, public land, boat access, tides and migration conditions. Starting with New Hampshire.">
+<!-- Link preview picture: Facebook needs the full web address. Replace SITE_ADDRESS with the address from Settings → Pages. -->
+<meta property="og:image" content="SITE_ADDRESS/og-image.jpg">
+<meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Wings &amp; Water banner">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="apple-mobile-web-app-title" content="Wings &amp; Water">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎣</text></svg>">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@600&display=swap" rel="stylesheet">
 <style>
 :root{
-  --bg:#e9eee8; --panel:#ffffff; --ink:#1c2822; --muted:#566860; --line:#cbd6ce; --accent:#2e5a4c;
+  --bg:#e9eee8; --panel:#ffffff; --ink:#1c2822; --muted:#566860; --line:#cbd6ce; --accent:#7f5f0e;
   --fall2:#1d5ca6; --fall1:#72a6d8; --steady:#98a39d; --rise1:#e29a3f; --rise2:#bf3627;
   --t1:#2a5ea6; --t2:#4ea2c6; --t3:#5aa877; --t4:#dcae38; --t5:#cf512d;
   --lvl:#2e6e9e; --stale:#b9c2bc;
@@ -22,12 +32,12 @@
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
-    --bg:#111714; --panel:#1a231f; --ink:#e3eae5; --muted:#9bb0a4; --line:#2c3a33; --accent:#8fc4b0;
+    --bg:#111714; --panel:#1a231f; --ink:#e3eae5; --muted:#9bb0a4; --line:#2c3a33; --accent:#d4ae45;
     --steady:#7b8882; --stale:#4a5550; color-scheme:dark;
   }
 }
 :root[data-theme="dark"]{
-  --bg:#111714; --panel:#1a231f; --ink:#e3eae5; --muted:#9bb0a4; --line:#2c3a33; --accent:#8fc4b0;
+  --bg:#111714; --panel:#1a231f; --ink:#e3eae5; --muted:#9bb0a4; --line:#2c3a33; --accent:#d4ae45;
   --steady:#7b8882; --stale:#4a5550; color-scheme:dark;
 }
 *,*::before,*::after{box-sizing:inherit}
@@ -291,11 +301,15 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:1rem 0}
   .modes button{padding:.35rem .6rem;font-size:.92rem;white-space:nowrap}
   .status{font-size:.8rem}
 }
+
+h1.brand{margin:0;line-height:0}
+h1.brand img{height:44px;width:auto;display:block}
+@media (max-width:640px){h1.brand img{height:36px}}
 </style>
 </head>
 <body>
 <header>
-  <h1>NH Water Conditions</h1>
+  <h1 class="brand"><img src="banner.webp" alt="Wings &amp; Water" width="396" height="132"></h1>
   <div class="modes" role="group" aria-label="What to color the map by">
     <button data-mode="change" aria-pressed="true"><span class="full">24-hr change</span><span class="short">24 hr</span></button>
     <button data-mode="normal" aria-pressed="false" id="normalBtn"><span class="full">vs. month avg</span><span class="short">vs avg</span></button>
@@ -378,7 +392,7 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:1rem 0}
   <div class="gate-card">
     <h2 id="gateTitle">Before you use this map</h2>
     <div class="gate-text" tabindex="0">
-      <p><b>NH Water Conditions</b> is a free, unofficial map that gathers public data from government agencies (USGS, the U.S. Army Corps of Engineers, NOAA, NH DES, the U.S. Fish and Wildlife Service, NH Fish and Game and NH GRANIT) in one place. It is a planning aid only.</p>
+      <p><b>Wings &amp; Water</b> is a free, unofficial map that gathers public data from government agencies (USGS, the U.S. Army Corps of Engineers, NOAA, NH DES, the U.S. Fish and Wildlife Service, NH Fish and Game and NH GRANIT) in one place. It is a planning aid only.</p>
       <p><b>Data can be wrong, late or missing.</b> Gauges fail, ice affects sensors, and agencies revise their numbers. Weather values come from a computer model, and forecasts more than a few days out are less certain.</p>
       <p><b>Not for safety decisions.</b> Do not use this map for navigation, flood decisions or <b>ice safety</b>. Water temperature and weather here say nothing about whether ice is safe.</p>
       <p><b>Check the rules yourself.</b> Land shown as public or managed by an agency is <b>not</b> a statement that hunting, fishing or access is allowed. Boundaries are approximate. Always check current regulations, property rules, postings and seasons before you go.</p>
@@ -760,7 +774,7 @@ const WetlandLayer = L.TileLayer.extend({
 });
 const wetlands = new WetlandLayer('', { tileSize: 256, minZoom: WET_MIN_ZOOM, maxZoom: 18, opacity: 1,
   attribution: 'Wetlands: U.S. Fish &amp; Wildlife Service NWI' });
-map.attributionControl.addAttribution('Page v42 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
+map.attributionControl.addAttribution('Page v43 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
 // A slow or failed square is retried up to twice (after 2 s, then 5 s). We never switch to the
 // server's standard green colors; a square that still fails just stays blank.
 wetlands.on('tileerror', e => {
@@ -1485,7 +1499,7 @@ async function openShare(list, title) {
     <div class="mk-actions">${navigator.share ? '<button class="primary" id="nativeShare">Share…</button>' : ''}<button id="copyLink">Copy link</button><button id="shareBack">Back</button></div>
     <p class="layer-note">The spots travel inside the link itself; nothing is uploaded anywhere. Anyone with the link can add these spots, so only send it to people you trust with them.</p>`;
   const ns = document.getElementById('nativeShare');
-  if (ns) ns.onclick = () => navigator.share({ title: 'Spots from NH Water Conditions', text: list.length === 1 ? list[0].name : list.length + ' saved spots', url: link }).catch(() => { });
+  if (ns) ns.onclick = () => navigator.share({ title: 'Spots from Wings & Water', text: list.length === 1 ? list[0].name : list.length + ' saved spots', url: link }).catch(() => { });
   document.getElementById('copyLink').onclick = async e => {
     try { await navigator.clipboard.writeText(link); e.target.textContent = 'Copied!'; }
     catch (err) { const el = document.getElementById('shareLink'); el.select(); document.execCommand && document.execCommand('copy'); e.target.textContent = 'Copied!'; }
@@ -2099,7 +2113,7 @@ function offerTour() {
   let seen = false; try { seen = localStorage.getItem('tour-seen') === '1'; } catch (e) { }
   if (seen) return;
   document.getElementById('detailBody').innerHTML = `<h2>Welcome!</h2>
-    <p>This map pulls together water levels, temperatures, tides, wetlands, public land and weather for New Hampshire, updated twice a day.</p>
+    <p>Wings &amp; Water pulls together water levels, temperatures, tides, wetlands, public land and weather, updated twice a day. It covers <b>New Hampshire</b> to start, with more of the Northeast to come.</p>
     <div class="mk-actions"><button class="primary" id="tourYes">Show me around (1 minute)</button><button id="tourNo">Not now</button></div>
     <p class="layer-note">You can take the tour anytime from ⓘ About.</p>`;
   document.getElementById('detail').classList.add('show');
@@ -2110,7 +2124,7 @@ function offerTour() {
 // ---------- About ----------
 function openAbout() {
   document.getElementById('detailBody').innerHTML = `<h2>About this map</h2>
-    <p><b>NH Water Conditions</b> is a free, unofficial map for anglers, waterfowl hunters and paddlers. It gathers public data in one place and updates it twice a day (about 3 AM and 1 PM).</p>
+    <p><b>Wings &amp; Water</b> is a free, unofficial map for anglers, waterfowl hunters and paddlers, <b>starting with New Hampshire</b>. It gathers public data in one place and updates it twice a day (about 3 AM and 1 PM).</p>
     <div class="mk-actions"><button class="primary" id="aboutTour">Take the tour</button><button id="aboutDisc">Read the disclaimer</button></div>
     ${FEEDBACK_URL ? `<p><a href="${esc(FEEDBACK_URL)}" target="_blank" rel="noopener">Send feedback or report a problem</a></p>` : ''}
     <h3 class="imp-h">Where the data comes from</h3>
@@ -2153,7 +2167,7 @@ function backupStatusHTML() {
 async function sendBackupLink() {
   let link;
   try { link = pageBase() + '#import=' + await packMarkers(myMarkers); } catch (e) { alert('Sorry, this browser couldn’t make a backup link.'); return; }
-  const text = `My saved spots from NH Water Conditions (${myMarkers.length}). Open this link to restore them on any phone or computer.`;
+  const text = `My saved spots from Wings & Water (${myMarkers.length}). Open this link to restore them on any phone or computer.`;
   if (navigator.share) {
     try { await navigator.share({ title: 'My spots backup', text, url: link }); markBackedUp(); openMyList(); return; }
     catch (e) { if (e && e.name === 'AbortError') return; }
