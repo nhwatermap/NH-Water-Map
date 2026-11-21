@@ -41,7 +41,7 @@
   --steady:#7b8882; --stale:#4a5550; color-scheme:dark;
 }
 *,*::before,*::after{box-sizing:inherit}
-html,body{height:100%;margin:0}
+html,body{height:100%;margin:0;overflow:hidden}
 body{background:var(--bg);color:var(--ink);font-family:"Barlow",system-ui,-apple-system,"Segoe UI",sans-serif;
   display:flex;flex-direction:column;font-size:16px;line-height:1.4}
 header{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem 1rem;padding:.7rem 1rem;background:var(--panel);
@@ -53,7 +53,7 @@ h1{font-family:"Barlow Condensed","Arial Narrow",sans-serif;font-weight:600;font
 .modes button:focus-visible,.refresh:focus-visible,.close:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .status{margin-left:auto;display:flex;align-items:center;gap:.6rem;color:var(--muted);font-size:.9rem}
 .refresh{font:inherit;border:1px solid var(--line);background:transparent;color:var(--ink);border-radius:6px;padding:.3rem .7rem;cursor:pointer}
-main{position:relative;flex:1;min-height:0}
+main{position:relative;flex:1;min-height:0;overflow:hidden}
 #map{position:absolute;inset:0;background:var(--bg)}
 .legend{position:absolute;left:.75rem;bottom:.75rem;z-index:500;background:var(--panel);border:1px solid var(--line);
   border-radius:8px;padding:.6rem .8rem;max-width:min(300px,calc(100% - 1.5rem));font-size:.88rem}
@@ -86,10 +86,10 @@ main{position:relative;flex:1;min-height:0}
 
 .toolbar{position:absolute;left:3.4rem;top:.75rem;z-index:560;display:flex;gap:.5rem;align-items:flex-start;flex-wrap:wrap;max-width:calc(100% - 4.4rem);pointer-events:none}
 .toolbar > *{pointer-events:auto}
-.layers{background:var(--panel);border:1px solid var(--line);border-radius:8px;max-width:min(300px,100%);font-size:.9rem}
+.layers{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:8px;font-size:.9rem}
 .layers > .menu-btn{font:inherit;font-weight:600;background:transparent;border:0;color:var(--ink);padding:.5rem .8rem;cursor:pointer;width:100%;text-align:left;display:flex;justify-content:space-between;gap:1rem}
 .layers > .menu-btn:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
-.layers-body{padding:0 .8rem .6rem;display:none}
+.layers-body{display:none;position:absolute;left:-1px;top:calc(100% + 6px);width:min(320px,calc(100vw - 4.6rem));max-height:var(--menu-max,70vh);overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:.2rem .8rem .7rem;box-shadow:0 6px 20px rgba(0,0,0,.35);z-index:5}
 .layers.open .layers-body{display:block}
 .layer-row{display:flex;gap:.55rem;align-items:flex-start;padding:.45rem 0;border-top:1px solid var(--line);cursor:pointer}
 .layer-row input{margin-top:.25rem;accent-color:var(--accent);width:1rem;height:1rem;flex:none}
@@ -305,6 +305,9 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:1rem 0}
 h1.brand{margin:0;line-height:0}
 h1.brand img{height:44px;width:auto;display:block}
 @media (max-width:640px){h1.brand img{height:36px}}
+
+.menu-open .daybar,.menu-open .legend,.menu-open .busy{display:none!important}
+.menu-open .toolbar{z-index:900}
 </style>
 </head>
 <body>
@@ -774,7 +777,7 @@ const WetlandLayer = L.TileLayer.extend({
 });
 const wetlands = new WetlandLayer('', { tileSize: 256, minZoom: WET_MIN_ZOOM, maxZoom: 18, opacity: 1,
   attribution: 'Wetlands: U.S. Fish &amp; Wildlife Service NWI' });
-map.attributionControl.addAttribution('Page v43 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
+map.attributionControl.addAttribution('Page v44 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
 // A slow or failed square is retried up to twice (after 2 s, then 5 s). We never switch to the
 // server's standard green colors; a square that still fails just stays blank.
 wetlands.on('tileerror', e => {
@@ -2076,7 +2079,7 @@ const TOUR = [
 let tourI = 0;
 function placeTour() {
   const step = TOUR[tourI], ring = document.getElementById('tourRing'), card = document.getElementById('tourCard');
-  document.querySelectorAll('.layers.open').forEach(o => o.classList.remove('open'));
+  if (typeof closeMenus === 'function') closeMenus();
   const el = document.querySelector(step.sel);
   document.getElementById('tourStep').textContent = `${tourI + 1} of ${TOUR.length}`;
   document.getElementById('tourTitle').textContent = step.title;
@@ -2218,12 +2221,33 @@ document.querySelectorAll('[data-layer]').forEach(cb => {
   cb.checked = saved === null ? cb.dataset.default === 'on' : saved === '1';
   cb.addEventListener('change', () => setLayer(cb.dataset.layer, cb.checked));
 });
-document.querySelectorAll('.menu-btn').forEach(btn => btn.addEventListener('click', () => {
-  const box = btn.closest('.layers'), open = !box.classList.contains('open');
+function closeMenus() {
   document.querySelectorAll('.layers.open').forEach(o => { o.classList.remove('open'); o.querySelector('.menu-btn').setAttribute('aria-expanded', 'false'); });
-  box.classList.toggle('open', open);
-  btn.setAttribute('aria-expanded', open);
+  mainEl.classList.remove('menu-open');
+}
+function sizeMenu(box) {
+  // Fit the drop-down between its button and the bottom of the map, so the page never scrolls
+  const top = box.getBoundingClientRect().bottom, bottom = mainEl.getBoundingClientRect().bottom;
+  box.style.setProperty('--menu-max', Math.max(160, bottom - top - 18) + 'px');
+  // Keep it on screen: shift left if it would run past the right edge
+  const body = box.querySelector('.layers-body');
+  body.style.left = '-1px';
+  const over = body.getBoundingClientRect().right - (window.innerWidth - 8);
+  if (over > 0) body.style.left = (-1 - over) + 'px';
+}
+document.querySelectorAll('.menu-btn').forEach(btn => btn.addEventListener('click', e => {
+  e.stopPropagation();
+  const box = btn.closest('.layers'), open = !box.classList.contains('open');
+  closeMenus();
+  if (!open) return;
+  box.classList.add('open');
+  btn.setAttribute('aria-expanded', 'true');
+  mainEl.classList.add('menu-open');
+  sizeMenu(box);
 }));
+window.addEventListener('resize', () => { const o = document.querySelector('.layers.open'); if (o) sizeMenu(o); });
+// Tapping the map (outside a menu) closes it
+document.getElementById('map').addEventListener('pointerdown', () => { if (document.querySelector('.layers.open')) closeMenus(); });
 
 fetch('data.json?v=' + Date.now())
   .then(r => { if (!r.ok) throw new Error('data.json not found yet'); return r.json(); })
