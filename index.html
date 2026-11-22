@@ -820,7 +820,7 @@ const WetlandLayer = L.TileLayer.extend({
 });
 const wetlands = new WetlandLayer('', { tileSize: 256, minZoom: WET_MIN_ZOOM, maxZoom: 18, opacity: 1,
   attribution: 'Wetlands: U.S. Fish &amp; Wildlife Service NWI' });
-map.attributionControl.addAttribution('Page v51 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
+map.attributionControl.addAttribution('Page v52 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
 // A slow or failed square is retried up to twice (after 2 s, then 5 s). We never switch to the
 // server's standard green colors; a square that still fails just stays blank.
 wetlands.on('tileerror', e => {
@@ -2099,7 +2099,7 @@ function migrationInfo(latlng) {
 
 // ---------- Disclaimer (required once per device, again when it changes) ----------
 const DISCLAIMER_VERSION = '2026-11-20';
-const FEEDBACK_URL = '';   // e.g. 'mailto:yourmapemail@gmail.com' or a Google Form link — shown in About when filled in
+const FEEDBACK_URL = 'mailto:ne.wingsandwater@gmail.com?subject=' + encodeURIComponent('Wings & Water feedback');   // e.g. 'mailto:yourmapemail@gmail.com' or a Google Form link — shown in About when filled in
 function agreed() { try { return localStorage.getItem('disclaimer-agreed') === DISCLAIMER_VERSION; } catch (e) { return false; } }
 function showGate(onDone) {
   const gate = document.getElementById('gate'), ok = document.getElementById('gateOk'), btn = document.getElementById('gateAgree');
@@ -2176,7 +2176,7 @@ function openAbout() {
   document.getElementById('detailBody').innerHTML = `<h2>About this map</h2>
     <p><b>Wings &amp; Water</b> is a free, unofficial map for anglers, waterfowl hunters and paddlers, <b>starting with New Hampshire</b>. It gathers public data in one place and updates it twice a day (about 3 AM and 1 PM).</p>
     <div class="mk-actions"><button class="primary" id="aboutTour">Take the tour</button><button id="aboutDisc">Read the disclaimer</button></div>
-    ${FEEDBACK_URL ? `<p><a href="${esc(FEEDBACK_URL)}" target="_blank" rel="noopener">Send feedback or report a problem</a></p>` : ''}
+    ${FEEDBACK_URL ? `<p><a href="${esc(FEEDBACK_URL)}">✉️ Send feedback or report a problem</a><br><span class="layer-note">ne.wingsandwater@gmail.com</span></p>` : ''}
     <h3 class="imp-h">Where the data comes from</h3>
     <p class="layer-note" style="font-size:.85rem">River and lake gauges: USGS, U.S. Army Corps of Engineers, NH DES · Tides, seacoast temperatures and buoys: NOAA, Great Bay NERR via NERACOOS · Weather: NOAA GFS model · Wetlands: U.S. Fish and Wildlife Service National Wetlands Inventory · Public land and boat access: NH GRANIT and NH Fish and Game · Map: USGS The National Map</p>
     <h3 class="imp-h">Use it like an app</h3>
