@@ -8,8 +8,8 @@
 <meta property="og:type" content="website">
 <meta property="og:title" content="Wings &amp; Water">
 <meta property="og:description" content="Free map for New England hunters, anglers and paddlers: water levels vs. normal, marshes and wetlands, public land, boat access, tides and migration conditions. Starting with New Hampshire.">
-<!-- Link preview picture: Facebook needs the full web address. Replace SITE_ADDRESS with the address from Settings → Pages. -->
-<meta property="og:image" content="SITE_ADDRESS/og-image.jpg">
+<meta property="og:image" content="https://nhwatermap.github.io/NH-Water-Map/og-image.jpg">
+<meta property="og:url" content="https://nhwatermap.github.io/NH-Water-Map/">
 <meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="Wings &amp; Water banner">
 <meta name="twitter:card" content="summary_large_image">
@@ -820,7 +820,7 @@ const WetlandLayer = L.TileLayer.extend({
 });
 const wetlands = new WetlandLayer('', { tileSize: 256, minZoom: WET_MIN_ZOOM, maxZoom: 18, opacity: 1,
   attribution: 'Wetlands: U.S. Fish &amp; Wildlife Service NWI' });
-map.attributionControl.addAttribution('Page v52 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
+map.attributionControl.addAttribution('Page v53 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
 // A slow or failed square is retried up to twice (after 2 s, then 5 s). We never switch to the
 // server's standard green colors; a square that still fails just stays blank.
 wetlands.on('tileerror', e => {
