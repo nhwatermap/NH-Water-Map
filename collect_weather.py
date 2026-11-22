@@ -116,6 +116,64 @@ def decode(raw):
     return (fields, grid) if fields else None
 
 
+# ---------------- Measured daily lows/highs from weather stations (NOAA ACIS) ----------------
+ACIS = "https://data.rcc-acis.org/MultiStnData"
+OBS_BOX = "-73.8,42.0,-66.9,47.6"          # New England and nearby
+CHECK_SPOTS = {"Plymouth": (43.757, -71.689), "Campton": (43.849, -71.636), "Laconia": (43.528, -71.470)}
+
+
+def acis_num(v):
+    if isinstance(v, list):
+        v = v[0]
+    v = str(v).strip()
+    if v in ("", "M", "S"):
+        return None
+    if v == "T":
+        return 0.0
+    try:
+        return float(v.rstrip("ASAF"))   # drop accumulation/flag suffixes
+    except ValueError:
+        return None
+
+
+def collect_observed():
+    today = now.astimezone(LOCAL).date()
+    sdate, edate = today - timedelta(days=PAST_DAYS + 1), today
+    params = {"bbox": OBS_BOX, "sdate": sdate.isoformat(), "edate": edate.isoformat(),
+              "elems": "mint,maxt,snwd,snow", "meta": "name,ll,elev,sids"}
+    body = urllib.parse.urlencode({"params": json.dumps(params)}).encode()
+    req = urllib.request.Request(ACIS, data=body, headers={"User-Agent": "nh-water-map"})
+    with urllib.request.urlopen(req, timeout=120) as r:
+        data = json.loads(r.read().decode("utf-8"))
+    dates = [(sdate + timedelta(days=i)).isoformat() for i in range((edate - sdate).days + 1)]
+    stations = []
+    for st in data.get("data", []):
+        meta, rows = st.get("meta", {}), st.get("data", [])
+        ll = meta.get("ll")
+        if not ll or not rows:
+            continue
+        cols = list(zip(*rows)) if rows else []
+        series = {k: [acis_num(v) for v in cols[i]] if i < len(cols) else [] for i, k in enumerate(("mint", "maxt", "snwd", "snow"))}
+        if not any(v is not None for v in series["mint"] + series["maxt"]):
+            continue
+        stations.append({"name": meta.get("name", "").title(), "lon": round(ll[0], 4), "lat": round(ll[1], 4),
+                         "elev": meta.get("elev"), **series})
+    # Report: how many stations, and the closest ones to a few check spots
+    yday = (today - timedelta(days=1)).isoformat()
+    yi = dates.index(yday) if yday in dates else -1
+    reporting = sum(1 for s in stations if yi >= 0 and yi < len(s["mint"]) and s["mint"][yi] is not None)
+    print(f"Stations: {len(stations)} with temperature readings; {reporting} reported a low for {yday}")
+    for label, (la, lo) in CHECK_SPOTS.items():
+        near = sorted(stations, key=lambda s: (s["lat"] - la) ** 2 + ((s["lon"] - lo) * 0.72) ** 2)[:4]
+        desc = []
+        for s in near:
+            miles = round((((s["lat"] - la) * 69) ** 2 + ((s["lon"] - lo) * 50) ** 2) ** 0.5)
+            low = s["mint"][yi] if yi >= 0 and yi < len(s["mint"]) else None
+            desc.append(f"{s['name']} ({miles} mi, low {'—' if low is None else round(low)}°F)")
+        print(f"  Near {label}: " + "; ".join(desc))
+    return {"dates": dates, "stations": stations}
+
+
 def main():
     last_needed = 3 * ((24 * (FUTURE_DAYS + 1) + 12) // 3)   # enough to finish the last local day
     cycle = latest_cycle(last_needed)
@@ -191,7 +249,12 @@ def main():
             out["newsnow"].append(ints(np.clip(sd[-1] - sd[0], 0, None) * 39.37 if sd is not None and len(sd) > 1 else nan, 10))
             out["snowpct"].append(ints(np.nanmean(cs, 0) * 100 if cs is not None else nan))
 
-    result = {"built": now.isoformat(), "cycle": cycle.isoformat(), "source": "NOAA GFS 0.25°", "grid": grid,
+    try:
+        observed = collect_observed()
+    except Exception as e:
+        print(f"Stations: couldn't get measured readings this time ({e}); the model weather is still saved")
+        observed = None
+    result = {"built": now.isoformat(), "cycle": cycle.isoformat(), "source": "NOAA GFS 0.25°", "grid": grid, "observed": observed,
               "days": days, "units": {"tmin": "°F", "tmax": "°F", "umean": "mph x10 (toward east)", "vmean": "mph x10 (toward north)",
                                       "wmax": "mph", "snod": "inches x10", "newsnow": "inches x10", "snowpct": "% of day"},
               "missing": -9999, "fields": out}
