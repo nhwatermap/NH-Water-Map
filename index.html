@@ -397,7 +397,7 @@ h1.brand img{height:44px;width:auto;display:block}
         <label><input type="radio" name="wxshow" value="tmin" checked> Overnight low</label>
         <label><input type="radio" name="wxshow" value="tmax"> Daytime high</label>
       </fieldset>
-      <p class="layer-note">Weather from NOAA’s GFS model: what happened over the past 5 days and the forecast for the next 5, updated twice a day. Forecasts get less certain further out. Tap the map for that spot’s weather.</p>
+      <p class="layer-note">Weather from NOAA’s GFS model: what happened over the past 5 days and the forecast for the next 5, updated twice a day. Forecasts get less certain further out. Values are averaged over about 15 miles; bogs, marshes and valleys often run colder on clear, calm nights. Tap the map for that spot’s weather.</p>
     </div>
   </div>
     <button class="add-btn" id="addBtn">📍 Add marker</button>
@@ -820,7 +820,7 @@ const WetlandLayer = L.TileLayer.extend({
 });
 const wetlands = new WetlandLayer('', { tileSize: 256, minZoom: WET_MIN_ZOOM, maxZoom: 18, opacity: 1,
   attribution: 'Wetlands: U.S. Fish &amp; Wildlife Service NWI' });
-map.attributionControl.addAttribution('Page v49 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
+map.attributionControl.addAttribution('Page v50 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
 // A slow or failed square is retried up to twice (after 2 s, then 5 s). We never switch to the
 // server's standard green colors; a square that still fails just stays blank.
 wetlands.on('tileerror', e => {
@@ -1855,7 +1855,7 @@ function weatherInfo(latlng) {
       ${stat('Wind (day average)', spd < 1 ? 'Calm' : `from ${DIR16[Math.round(from / 22.5) % 16]} ${Math.round(spd)} mph`)}${stat('Strongest wind', Math.round(wmax) + ' mph')}
       ${stat('Snow on the ground', snod >= 0.5 ? snod.toFixed(snod < 10 ? 1 : 0) + ' in' : 'None')}${stat('New snow', newsnow >= 0.1 ? newsnow.toFixed(1) + ' in' : spct > 10 ? 'Light' : 'None')}
     </div>
-    <p class="layer-note">Model values for this area, not a station reading. Forecasts beyond about 3 days are less certain.</p>`;
+    <p class="layer-note">Model values averaged over about 15 miles, not a station reading. <b>Valleys, bogs and marshes often run 5–10 °F colder</b> on clear, calm nights, so skim ice can form there before these lows reach freezing. Forecasts beyond about 3 days are less certain.</p>`;
 }
 
 
@@ -2092,7 +2092,7 @@ function migrationInfo(latlng) {
       ${stat('Snow', pct(m.snow), m.fresh >= 0.1 ? `${m.fresh.toFixed(1)} in fresh` : m.depth >= 0.5 ? `${m.depth.toFixed(1)} in on the ground` : 'none')}
       ${stat('Tailwind', pct(m.tail), spd < 1 ? 'calm' : `from ${DIR16[Math.round(from / 22.5) % 16]} ${Math.round(spd)} mph`)}
     </div>
-    <div class="caution"><b>Conditions, not a bird forecast.</b> This combines cold, snow and wind that tend to push waterfowl south. It can’t see where birds actually are.</div>`;
+    <div class="caution"><b>Conditions, not a bird forecast.</b> This combines cold, snow and wind that tend to push waterfowl south. It can’t see where birds actually are, and low spots like bogs and marshes usually freeze sooner than these area-wide values suggest.</div>`;
 }
 
 

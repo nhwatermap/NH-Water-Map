@@ -25,6 +25,8 @@ OUT = "weather.json"
 # What to keep from each file, identified by NOAA's parameter numbers and level
 WANT = {
     (0, 0, 0, "heightAboveGround", 2): "t2",      # temperature at 2 m, kelvin
+    (0, 0, 4, "heightAboveGround", 2): "tmax2",   # highest temperature since the last output, kelvin
+    (0, 0, 5, "heightAboveGround", 2): "tmin2",   # lowest temperature since the last output, kelvin
     (0, 2, 2, "heightAboveGround", 10): "u10",    # wind toward the east at 10 m, m/s
     (0, 2, 3, "heightAboveGround", 10): "v10",    # wind toward the north at 10 m, m/s
     (0, 1, 11, "surface", 0): "snod",             # snow depth, m
@@ -80,7 +82,8 @@ def fetch(cycle, fhour):
     """Our region and variables from one GFS file, as {name: 2-D array}, plus the grid."""
     params = {"file": f"gfs.t{cycle:%H}z.pgrb2.0p25.f{fhour:03d}", "dir": cycle_dir(cycle), "subregion": "",
               **REGION, "lev_2_m_above_ground": "on", "lev_10_m_above_ground": "on", "lev_surface": "on",
-              "var_TMP": "on", "var_UGRD": "on", "var_VGRD": "on", "var_SNOD": "on", "var_CSNOW": "on"}
+              "var_TMP": "on", "var_TMAX": "on", "var_TMIN": "on",
+              "var_UGRD": "on", "var_VGRD": "on", "var_SNOD": "on", "var_CSNOW": "on"}
     raw = get(FILTER + "?" + urllib.parse.urlencode(params))
     time.sleep(1.2)  # polite pacing for NOAA's server
     if not raw:
@@ -120,11 +123,12 @@ def main():
 
     samples = []   # (valid time, fields)
     grid = None
-    # Past: each 6-hour run's analysis and 3-hour step, back over the past days
+    # Past: each 6-hour run's 3- and 6-hour steps, back over the past days. Together they
+    # cover every hour, and they carry the model's true lowest/highest temperature in between.
     c = cycle - timedelta(hours=6)
     oldest = now - timedelta(days=PAST_DAYS + 1)
     while c >= oldest:
-        for fh in (0, 3):
+        for fh in (3, 6):
             got = fetch(c, fh)
             if got:
                 samples.append((c + timedelta(hours=fh), got[0]))
@@ -169,13 +173,17 @@ def main():
         kind = "today" if d == today else ("past" if d < today else "forecast")
         days.append({"date": d.isoformat(), "kind": kind, "snapshots": len(rows)})
         t = stack(rows, "t2")
+        tlo = stack(rows, "tmin2")   # the model's true lowest temperature between outputs
+        thi = stack(rows, "tmax2")   # and highest
         u, v = stack(rows, "u10"), stack(rows, "v10")
         sd, cs = stack(rows, "snod"), stack(rows, "csnow")
         k2f = lambda k: (k - 273.15) * 9 / 5 + 32
         ms2mph = 2.23694
         with np.errstate(all="ignore"):
-            out["tmin"].append(ints(k2f(np.nanmin(t, 0)) if t is not None else nan))
-            out["tmax"].append(ints(k2f(np.nanmax(t, 0)) if t is not None else nan))
+            lows = [a for a in (t, tlo) if a is not None]
+            highs = [a for a in (t, thi) if a is not None]
+            out["tmin"].append(ints(k2f(np.nanmin(np.concatenate(lows), 0))) if lows else ints(nan))
+            out["tmax"].append(ints(k2f(np.nanmax(np.concatenate(highs), 0))) if highs else ints(nan))
             out["umean"].append(ints(np.nanmean(u, 0) * ms2mph if u is not None else nan, 10))
             out["vmean"].append(ints(np.nanmean(v, 0) * ms2mph if v is not None else nan, 10))
             out["wmax"].append(ints(np.nanmax(np.hypot(u, v), 0) * ms2mph if u is not None and v is not None else nan))
