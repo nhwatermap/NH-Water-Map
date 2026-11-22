@@ -397,7 +397,7 @@ h1.brand img{height:44px;width:auto;display:block}
         <label><input type="radio" name="wxshow" value="tmin" checked> Overnight low</label>
         <label><input type="radio" name="wxshow" value="tmax"> Daytime high</label>
       </fieldset>
-      <p class="layer-note">Weather from NOAA’s GFS model: what happened over the past 5 days and the forecast for the next 5, updated twice a day. Forecasts get less certain further out. Values are averaged over about 15 miles; bogs, marshes and valleys often run colder on clear, calm nights. Tap the map for that spot’s weather.</p>
+      <p class="layer-note">Weather from NOAA’s GFS model: what happened over the past 5 days and the forecast for the next 5, updated twice a day. Forecasts get less certain further out. Overnight lows are adjusted to measured readings from nearby weather stations, shown as dots on past days. Values cover about 15 miles; bogs, marshes and valleys can still run colder on clear, calm nights. Tap the map for that spot’s weather.</p>
     </div>
   </div>
     <button class="add-btn" id="addBtn">📍 Add marker</button>
@@ -820,7 +820,7 @@ const WetlandLayer = L.TileLayer.extend({
 });
 const wetlands = new WetlandLayer('', { tileSize: 256, minZoom: WET_MIN_ZOOM, maxZoom: 18, opacity: 1,
   attribution: 'Wetlands: U.S. Fish &amp; Wildlife Service NWI' });
-map.attributionControl.addAttribution('Page v50 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
+map.attributionControl.addAttribution('Page v51 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
 // A slow or failed square is retried up to twice (after 2 s, then 5 s). We never switch to the
 // server's standard green colors; a square that still fails just stays blank.
 wetlands.on('tileerror', e => {
@@ -1727,7 +1727,7 @@ document.querySelector('[data-layer="wetlands"]').addEventListener('change', e =
 let wx = null, wxP = null, wxDay = 5, wxShow = 'tmin';
 function loadWx() {
   return wxP || (wxP = fetch('weather.json?v=' + Date.now()).then(r => { if (!r.ok) throw new Error('no weather yet'); return r.json(); })
-    .then(d => { wx = d; wxDay = Math.max(0, d.days.findIndex(x => x.kind === 'today')); setupDayBar(); return d; })
+    .then(d => { wx = d; wxDay = Math.max(0, d.days.findIndex(x => x.kind === 'today')); setupDayBar(); setTimeout(() => typeof drawObs === 'function' && drawObs(), 0); return d; })
     .catch(e => { wxP = null; throw e; }));
 }
 // Value of a weather field at a spot, blended from the four nearest grid points
@@ -1815,12 +1815,13 @@ function setWxDay(i) {
   if (typeof wxWind !== 'undefined') wxWind.refresh();
   if (typeof wxSnow !== 'undefined' && wxSnow._map) { wxSnow.redraw(); snowHint(); }
   if (typeof wxMig !== 'undefined' && wxMig._map) wxMig.redraw();
+  if (typeof drawObs === 'function') drawObs();
 }
 document.getElementById('dayRange').addEventListener('input', e => setWxDay(+e.target.value));
 document.getElementById('dayPrev').onclick = () => setWxDay(wxDay - 1);
 document.getElementById('dayNext').onclick = () => setWxDay(wxDay + 1);
 document.getElementById('dayToday').onclick = () => wx && setWxDay(wx.days.findIndex(x => x.kind === 'today'));
-document.querySelectorAll('input[name=wxshow]').forEach(r => r.addEventListener('change', () => { if (r.checked) { wxShow = r.value; wxTemp.redraw(); } }));
+document.querySelectorAll('input[name=wxshow]').forEach(r => r.addEventListener('change', () => { if (r.checked) { wxShow = r.value; wxTemp.redraw(); if (typeof drawObs === 'function') drawObs(); } }));
 function syncWxBar() {
   // Ask the map itself: during a 'remove' event the layer still looks attached for a moment
   const on = l => typeof l !== 'undefined' && map.hasLayer(l);
@@ -1851,7 +1852,7 @@ function weatherInfo(latlng) {
   return `<span class="badge">Weather · ${esc(label)}</span>
     <p class="sub">${esc(kind)} · NOAA GFS model, about 15-mile detail</p>
     <div class="stats">
-      ${stat('Overnight low', Math.round(lo) + ' °F')}${stat('Daytime high', Math.round(hi) + ' °F')}
+      <div class="stat"><span>Overnight low</span><b>${Math.round(lo)} °F</b>${lowNote(d, lat, lon, lo)}</div>${stat('Daytime high', Math.round(hi) + ' °F')}
       ${stat('Wind (day average)', spd < 1 ? 'Calm' : `from ${DIR16[Math.round(from / 22.5) % 16]} ${Math.round(spd)} mph`)}${stat('Strongest wind', Math.round(wmax) + ' mph')}
       ${stat('Snow on the ground', snod >= 0.5 ? snod.toFixed(snod < 10 ? 1 : 0) + ' in' : 'None')}${stat('New snow', newsnow >= 0.1 ? newsnow.toFixed(1) + ' in' : spct > 10 ? 'Light' : 'None')}
     </div>
@@ -2265,6 +2266,44 @@ function hideSplash() {
   setTimeout(() => { el.classList.add('gone'); setTimeout(() => el.remove(), 500); }, wait);
 }
 setTimeout(hideSplash, 4000);                                       // never longer than 4 seconds
+
+
+// ---------- Measured lows from weather stations (shown with Temperature → Overnight low, past days) ----------
+const wxObs = L.layerGroup();
+function obsForDay(day) {
+  const o = wx && wx.observed;
+  if (!o || !wx.days[day]) return [];
+  const di = o.dates.indexOf(wx.days[day].date);
+  if (di < 0) return [];
+  return o.stations.filter(s => s.mint[di] != null).map(s => ({ name: s.name, lat: s.lat, lon: s.lon, low: s.mint[di] }));
+}
+function drawObs() {
+  wxObs.clearLayers();
+  const show = map.hasLayer(wxTemp) && wxShow === 'tmin' && wx && wx.days[wxDay] && wx.days[wxDay].kind !== 'forecast';
+  if (!show) { map.removeLayer(wxObs); return; }
+  for (const o of obsForDay(wxDay)) {
+    const c = tempColor(o.low);
+    L.circleMarker([o.lat, o.lon], { radius: 5.5, weight: 1.5, color: '#fff', fillColor: `rgb(${c.join(',')})`, fillOpacity: 1, bubblingMouseEvents: false })
+      .bindTooltip(`${esc(o.name)}<br><b>${Math.round(o.low)} °F</b> measured low`)
+      .addTo(wxObs);
+  }
+  wxObs.addTo(map);
+}
+wxTemp.on('add remove', () => setTimeout(drawObs, 0));
+// Plain-language note on how a low was worked out, and the nearest measured lows
+function lowNote(day, lat, lon, lo) {
+  const kind = wx.days[day] && wx.days[day].lows;
+  const raw = wx.fields.tmin_model ? wxAt('tmin_model', day, lat, lon) : null;
+  const diff = raw == null ? 0 : Math.round(lo - raw);
+  let note = '';
+  if (kind && raw != null && Math.abs(diff) >= 1) note = kind.startsWith('adjusted to measured')
+    ? `adjusted to nearby station readings (model alone: ${Math.round(raw)} °F)`
+    : `adjusted for the model’s recent misses (model alone: ${Math.round(raw)} °F)`;
+  const near = obsForDay(day).map(o => ({ ...o, mi: Math.hypot((o.lat - lat) * 69, (o.lon - lon) * 69 * Math.cos(lat * Math.PI / 180)) }))
+    .filter(o => o.mi <= 30).sort((a, b) => a.mi - b.mi).slice(0, 2);
+  if (near.length) note += (note ? '<br>' : '') + 'Measured: ' + near.map(o => `${esc(o.name)} ${Math.round(o.low)} °F (${Math.round(o.mi)} mi)`).join(', ');
+  return note ? `<small>${note}</small>` : '';
+}
 
 function updateWetNote() {
   document.getElementById('wetZoomNote').style.display = map.getZoom() < WET_MIN_ZOOM ? '' : 'none';

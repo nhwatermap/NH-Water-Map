@@ -12,8 +12,12 @@ Saves weather.json. Runs in GitHub's twice-daily update; needs the pygrib decode
 import json, os, sys, tempfile, time, urllib.request, urllib.parse, urllib.error
 from datetime import datetime, timedelta, timezone
 
+import warnings
 import numpy as np
 import pygrib
+
+warnings.filterwarnings('ignore', message='All-NaN slice encountered')
+warnings.filterwarnings('ignore', message='Mean of empty slice')
 
 FILTER = "https://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_0p25.pl"
 PROD = "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod"
@@ -174,6 +178,69 @@ def collect_observed():
     return {"dates": dates, "stations": stations}
 
 
+# ---------------- Correct the model's lows with measured station lows ----------------
+MAX_REACH = 60.0      # miles: stations farther than this don't affect a spot
+NEAR = 5.0            # miles: softens the weight of a station right on top of a grid point
+PULL_TO_MODEL = 1 / 30.0 ** 2   # with only distant stations, lean back toward the model
+FORECAST_SHARE = 0.6  # use 60% of the recent difference for forecast days
+MAX_FIX = 15.0        # never move a low more than 15 °F
+
+
+def model_at(grid_vals, g, lat, lon):
+    fi, fj = (lat - g["lat0"]) / g["dlat"], (lon - g["lon0"]) / g["dlon"]
+    if fi < 0 or fj < 0 or fi > g["nlat"] - 1 or fj > g["nlon"] - 1:
+        return None
+    i, j = min(int(fi), g["nlat"] - 2), min(int(fj), g["nlon"] - 2)
+    di, dj = fi - i, fj - j
+    v = (grid_vals[i, j] * (1 - dj) + grid_vals[i, j + 1] * dj) * (1 - di) + (grid_vals[i + 1, j] * (1 - dj) + grid_vals[i + 1, j + 1] * dj) * di
+    return None if np.isnan(v) else float(v)
+
+
+def correct_lows(out, days, g, observed):
+    """Adjust past days' lows toward what thermometers measured, and nudge forecast lows by the recent difference."""
+    if not observed or not observed.get("stations"):
+        return 0
+    shape = (g["nlat"], g["nlon"])
+    lats = g["lat0"] + g["dlat"] * np.arange(g["nlat"])
+    lons = g["lon0"] + g["dlon"] * np.arange(g["nlon"])
+    LAT, LON = np.meshgrid(lats, lons, indexing="ij")
+    tmin = [np.where(np.array(d) == -9999, np.nan, np.array(d, dtype=float)).reshape(shape) for d in out["tmin"]]
+    out["tmin_model"] = [list(d) for d in out["tmin"]]
+    fixes, used = {}, 0
+    for k, day in enumerate(days):
+        if day["kind"] == "forecast" or day["date"] not in observed["dates"]:
+            continue
+        di = observed["dates"].index(day["date"])
+        pts = []
+        for st in observed["stations"]:
+            low = st["mint"][di] if di < len(st["mint"]) else None
+            mod = model_at(tmin[k], g, st["lat"], st["lon"]) if low is not None else None
+            if low is None or mod is None or abs(low - mod) > 25:     # skip missing or suspicious readings
+                continue
+            pts.append((st["lat"], st["lon"], low - mod))
+        if len(pts) < 5:
+            continue
+        num, den = np.zeros(shape), np.full(shape, PULL_TO_MODEL)
+        for la, lo, b in pts:
+            d = np.hypot((LAT - la) * 69.0, (LON - lo) * 69.0 * np.cos(np.radians(la)))
+            w = np.where(d <= MAX_REACH, 1.0 / (d ** 2 + NEAR ** 2), 0.0)
+            num += w * b; den += w
+        fix = np.clip(num / den, -MAX_FIX, MAX_FIX)
+        fixes[k] = fix
+        tmin[k] = tmin[k] + fix
+        day["lows"] = "adjusted to measured"
+        used = max(used, len(pts))
+    if fixes:
+        recent = [fixes[k] for k in sorted(fixes)[-3:]]          # the last few days' differences
+        trend = np.mean(recent, axis=0) * FORECAST_SHARE
+        for k, day in enumerate(days):
+            if day["kind"] == "forecast":
+                tmin[k] = tmin[k] + trend
+                day["lows"] = "adjusted for recent model error"
+    out["tmin"] = [np.where(np.isnan(t), -9999, np.round(t)).astype(int).ravel().tolist() for t in tmin]
+    return used
+
+
 def main():
     last_needed = 3 * ((24 * (FUTURE_DAYS + 1) + 12) // 3)   # enough to finish the last local day
     cycle = latest_cycle(last_needed)
@@ -254,6 +321,9 @@ def main():
     except Exception as e:
         print(f"Stations: couldn't get measured readings this time ({e}); the model weather is still saved")
         observed = None
+    n = correct_lows(out, days, grid, observed)
+    if n:
+        print(f"Lows: past days adjusted to measured station lows (up to {n} stations a day); forecast lows nudged by the recent difference")
     result = {"built": now.isoformat(), "cycle": cycle.isoformat(), "source": "NOAA GFS 0.25°", "grid": grid, "observed": observed,
               "days": days, "units": {"tmin": "°F", "tmax": "°F", "umean": "mph x10 (toward east)", "vmean": "mph x10 (toward north)",
                                       "wmax": "mph", "snod": "inches x10", "newsnow": "inches x10", "snowpct": "% of day"},
