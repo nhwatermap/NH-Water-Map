@@ -41,19 +41,20 @@ now = datetime.now(timezone.utc)
 requests_made = 0
 
 
-def get(url, tries=3, timeout=90):
+def get(url, tries=3, timeout=90, headers=None, quiet_codes=(404,)):
+    """Download a URL. Returns None for 'not there' answers (404, plus any in quiet_codes)."""
     global requests_made
     for i in range(tries):
         try:
             requests_made += 1
-            req = urllib.request.Request(url, headers={"User-Agent": "nh-water-map"})
+            req = urllib.request.Request(url, headers={"User-Agent": "nh-water-map", **(headers or {})})
             with urllib.request.urlopen(req, timeout=timeout) as r:
                 return r.read()
         except urllib.error.HTTPError as e:
-            if e.code == 404:
+            if e.code in quiet_codes:
                 return None
-            if i == tries - 1:
-                raise
+            if e.code in (403, 429) or i == tries - 1:
+                raise                     # refused or rate-limited: let the caller switch sources
         except Exception:
             if i == tries - 1:
                 raise
@@ -65,10 +66,32 @@ def cycle_dir(cycle):
     return f"/gfs.{cycle:%Y%m%d}/{cycle:%H}/atmos"
 
 
+def gfs_name(cycle, fhour):
+    return f"gfs.t{cycle:%H}z.pgrb2.0p25.f{fhour:03d}"
+
+
+# Two official copies of the same NOAA data. Amazon's (NOAA's Open Data program) is the main one:
+# it isn't subject to NOMADS's blocking of busy addresses. NOMADS is the backup.
+AWS = "https://noaa-gfs-bdp-pds.s3.amazonaws.com"
+SOURCE = {"name": "aws"}
+# Which records to pull from each file, as they're named in NOAA's index files
+IDX_WANT = {("TMP", "2 m above ground"), ("TMAX", "2 m above ground"), ("TMIN", "2 m above ground"),
+            ("UGRD", "10 m above ground"), ("VGRD", "10 m above ground"), ("SNOD", "surface"), ("CSNOW", "surface")}
+
+
 def cycle_ready(cycle, last_hour):
     """A run is usable once its last forecast hour we need has been published."""
-    url = f"{PROD}{cycle_dir(cycle)}/gfs.t{cycle:%H}z.pgrb2.0p25.f{last_hour:03d}.idx"
-    return get(url, tries=2, timeout=30) is not None
+    name = gfs_name(cycle, last_hour) + ".idx"
+    if SOURCE["name"] == "aws":
+        try:
+            return get(f"{AWS}{cycle_dir(cycle)}/{name}", tries=2, timeout=30, quiet_codes=(403, 404)) is not None
+        except Exception as e:
+            print(f"Weather: Amazon copy not reachable ({e}); trying NOAA's NOMADS server")
+            SOURCE["name"] = "nomads"
+    try:
+        return get(f"{PROD}{cycle_dir(cycle)}/{name}", tries=2, timeout=30) is not None
+    except Exception as e:
+        raise SystemExit(f"Neither copy of NOAA's GFS data is reachable right now ({e}); keeping the previous weather.json")
 
 
 def latest_cycle(last_hour):
@@ -82,24 +105,61 @@ def latest_cycle(last_hour):
     raise SystemExit("No recent GFS run is available from NOAA right now; keeping the previous weather.json")
 
 
-def fetch(cycle, fhour):
-    """Our region and variables from one GFS file, as {name: 2-D array}, plus the grid."""
-    params = {"file": f"gfs.t{cycle:%H}z.pgrb2.0p25.f{fhour:03d}", "dir": cycle_dir(cycle), "subregion": "",
+def fetch_aws(cycle, fhour):
+    """Only the records we need from Amazon's copy, using NOAA's index to download just those bytes."""
+    base = f"{AWS}{cycle_dir(cycle)}/{gfs_name(cycle, fhour)}"
+    idx = get(base + ".idx", quiet_codes=(403, 404))
+    if not idx:
+        return None
+    lines = [l.split(":") for l in idx.decode("utf-8", "replace").splitlines() if l.count(":") >= 5]
+    ranges = []
+    for n, parts in enumerate(lines):
+        if (parts[3], parts[4]) in IDX_WANT:
+            start = int(parts[1])
+            end = int(lines[n + 1][1]) - 1 if n + 1 < len(lines) else ""
+            ranges.append((start, end))
+    if not ranges:
+        return None
+    chunks = []
+    for start, end in ranges:
+        part = get(base, headers={"Range": f"bytes={start}-{end}"}, quiet_codes=(403, 404))
+        if part:
+            chunks.append(part)
+    return decode(b"".join(chunks)) if chunks else None
+
+
+def fetch_nomads(cycle, fhour):
+    params = {"file": gfs_name(cycle, fhour), "dir": cycle_dir(cycle), "subregion": "",
               **REGION, "lev_2_m_above_ground": "on", "lev_10_m_above_ground": "on", "lev_surface": "on",
               "var_TMP": "on", "var_TMAX": "on", "var_TMIN": "on",
               "var_UGRD": "on", "var_VGRD": "on", "var_SNOD": "on", "var_CSNOW": "on"}
     raw = get(FILTER + "?" + urllib.parse.urlencode(params))
     time.sleep(1.2)  # polite pacing for NOAA's server
-    if not raw:
+    return decode(raw) if raw else None
+
+
+def fetch(cycle, fhour):
+    """Our region and variables from one GFS file, as {name: 2-D array}, plus the grid."""
+    if SOURCE["name"] == "aws":
+        try:
+            return fetch_aws(cycle, fhour)
+        except Exception as e:
+            print(f"Weather: Amazon copy failed ({e}); switching to NOAA's NOMADS server")
+            SOURCE["name"] = "nomads"
+    try:
+        return fetch_nomads(cycle, fhour)
+    except Exception as e:
+        print(f"Weather: couldn't get {gfs_name(cycle, fhour)} ({e})")
         return None
-    return decode(raw)
 
 
 def decode(raw):
+    """Decode GRIB records and keep just our region (works for whole-globe or already-trimmed files)."""
     with tempfile.NamedTemporaryFile(suffix=".grb2", delete=False) as fh:
         fh.write(raw)
         path = fh.name
     fields, grid = {}, None
+    lon_lo, lon_hi = REGION["leftlon"] % 360, REGION["rightlon"] % 360
     try:
         for msg in pygrib.open(path):
             key = (msg["discipline"], msg["parameterCategory"], msg["parameterNumber"], msg["typeOfLevel"], int(msg["level"]))
@@ -108,6 +168,12 @@ def decode(raw):
                 continue
             vals = np.ma.filled(msg.values.astype(float), np.nan)
             lats, lons = msg.latlons()
+            lons360 = lons % 360
+            rows = np.where((lats[:, 0] >= REGION["bottomlat"] - 1e-6) & (lats[:, 0] <= REGION["toplat"] + 1e-6))[0]
+            cols = np.where((lons360[0] >= lon_lo - 1e-6) & (lons360[0] <= lon_hi + 1e-6))[0]
+            if not len(rows) or not len(cols):
+                continue
+            vals = vals[np.ix_(rows, cols)]; lats = lats[np.ix_(rows, cols)]; lons = lons360[np.ix_(rows, cols)]
             if lats[0, 0] > lats[-1, 0]:      # store south-to-north
                 vals, lats = vals[::-1], lats[::-1]
             lons = np.where(lons > 180, lons - 360, lons)
@@ -244,7 +310,7 @@ def correct_lows(out, days, g, observed):
 def main():
     last_needed = 3 * ((24 * (FUTURE_DAYS + 1) + 12) // 3)   # enough to finish the last local day
     cycle = latest_cycle(last_needed)
-    print(f"Weather: using the {cycle:%Y-%m-%d %H}Z GFS run")
+    print(f"Weather: using the {cycle:%Y-%m-%d %H}Z GFS run (from {'Amazon' if SOURCE['name'] == 'aws' else 'NOMADS'})")
 
     samples = []   # (valid time, fields)
     grid = None
