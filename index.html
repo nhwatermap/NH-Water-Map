@@ -820,7 +820,7 @@ const WetlandLayer = L.TileLayer.extend({
 });
 const wetlands = new WetlandLayer('', { tileSize: 256, minZoom: WET_MIN_ZOOM, maxZoom: 18, opacity: 1,
   attribution: 'Wetlands: U.S. Fish &amp; Wildlife Service NWI' });
-map.attributionControl.addAttribution('Page v53 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
+map.attributionControl.addAttribution('Page v54 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
 // A slow or failed square is retried up to twice (after 2 s, then 5 s). We never switch to the
 // server's standard green colors; a square that still fails just stays blank.
 wetlands.on('tileerror', e => {
@@ -1264,7 +1264,8 @@ const CATS = {
   hunting: { label: 'Hunting', emoji: '🦆', color: '#b5541c', types: ['Ducks', 'Geese', 'Sea ducks', 'Scouting'] },
   fishing: { label: 'Fishing', emoji: '🎣', color: '#1f6fb2', types: ['Trout', 'Bass', 'Panfish', 'Ice fishing'] },
   boating: { label: 'Boating / Paddling', emoji: '🛶', color: '#11806f', types: ['Put-in / take-out', 'Good paddle', 'Hazard', 'Campsite'] },
-  general: { label: 'General / Other', emoji: '📍', color: '#5b6470', types: [] }
+  general: { label: 'General / Other', emoji: '📍', color: '#5b6470', types: [] },
+  avoid: { label: 'Avoid', emoji: '⛔', color: '#b3261e', types: ['No boat access', 'Too shallow / blocked', 'Posted / private', 'Hazard', 'Not worth it'] }
 };
 const MK_KEY = 'myMarkers-v1';
 let myMarkers = [];
@@ -1452,8 +1453,8 @@ drawMine();
 
 
 // ---------- My spots list, sharing (QR code / link) and backup ----------
-const CAT_CODE = { hunting: 'h', fishing: 'f', boating: 'b', general: 'g' };
-const CODE_CAT = { h: 'hunting', f: 'fishing', b: 'boating', g: 'general' };
+const CAT_CODE = { hunting: 'h', fishing: 'f', boating: 'b', general: 'g', avoid: 'a' };
+const CODE_CAT = { h: 'hunting', f: 'fishing', b: 'boating', g: 'general', a: 'avoid' };
 const QR_MAX = 1500; // longer links make QR codes too dense to scan reliably from a screen
 function toB64url(bytes) {
   let bin = '';
