@@ -338,6 +338,21 @@ h1.brand img{height:44px;width:auto;display:block}
 .splash.gone{opacity:0;pointer-events:none}
 @media (prefers-reduced-motion: reduce){.splash{transition:none}}
 .card-banner{display:block;width:100%;max-width:440px;height:auto;margin:0 auto .8rem;border-radius:8px}
+
+.mk-photos{display:flex;gap:.5rem;flex-wrap:wrap;margin:.5rem 0 .2rem}
+.mk-photos:empty{display:none}
+.ph-thumb{width:84px;height:84px;padding:0;border:1px solid var(--line);border-radius:8px;overflow:hidden;cursor:pointer;background:var(--bg)}
+.ph-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.ph-add{width:84px;height:84px;border:1.5px dashed var(--line);border-radius:8px;background:transparent;color:var(--ink);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.1rem;font:inherit;font-size:1.2rem}
+.ph-add span{font-size:.78rem;font-weight:600}
+.ph-add small{font-size:.7rem;color:var(--muted)}
+.ph-view{position:fixed;inset:0;z-index:3200;background:rgba(0,0,0,.92);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:max(.75rem,env(safe-area-inset-top)) .75rem max(.75rem,env(safe-area-inset-bottom))}
+.ph-view img{max-width:100%;max-height:calc(100% - 4.5rem);object-fit:contain;border-radius:6px}
+.ph-bar{display:flex;gap:.6rem;align-items:center;margin-top:.8rem;color:#eee;flex-wrap:wrap;justify-content:center}
+.ph-bar span{font-size:.9rem;margin-right:.4rem}
+.ph-bar button{font:inherit;font-weight:700;border-radius:8px;padding:.5rem .9rem;cursor:pointer;border:1px solid #888;background:transparent;color:#eee}
+.ph-bar .primary{background:var(--accent);color:var(--panel);border-color:var(--accent)}
+.ph-bar .danger{color:#ff8a80;border-color:#ff8a80}
 </style>
 </head>
 <body>
@@ -820,7 +835,7 @@ const WetlandLayer = L.TileLayer.extend({
 });
 const wetlands = new WetlandLayer('', { tileSize: 256, minZoom: WET_MIN_ZOOM, maxZoom: 18, opacity: 1,
   attribution: 'Wetlands: U.S. Fish &amp; Wildlife Service NWI' });
-map.attributionControl.addAttribution('Page v54 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
+map.attributionControl.addAttribution('Page v55 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
 // A slow or failed square is retried up to twice (after 2 s, then 5 s). We never switch to the
 // server's standard green colors; a square that still fails just stays blank.
 wetlands.on('tileerror', e => {
@@ -1319,8 +1334,8 @@ document.getElementById('addBtn').addEventListener('click', () => {
   if (map.getZoom() < 12) map.setZoom(13);
   startPlacing();
 });
-document.getElementById('placeCancel').addEventListener('click', stopPlacing);
-document.addEventListener('keydown', e => { if (e.key === 'Escape' && placing) stopPlacing(); });
+document.getElementById('placeCancel').addEventListener('click', () => { pendingPhoto = null; stopPlacing(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && placing) { pendingPhoto = null; stopPlacing(); } });
 document.getElementById('placeOk').addEventListener('click', () => {
   const c = map.getCenter(), lat = +c.lat.toFixed(6), lon = +c.lng.toFixed(6);
   if (placing && placing.moveId) {
@@ -1337,7 +1352,7 @@ function openMarkerForm(id, lat, lon) {
   const m = id ? myMarkers.find(x => x.id === id) : null;
   const name = m ? m.name : 'Saved spot ' + (myMarkers.length + 1);
   const cat = m ? m.cat : 'general';
-  const dateVal = m ? (m.date || isoDate(new Date(m.created))) : todayISO();
+  const dateVal = m ? (m.date || isoDate(new Date(m.created))) : (pendingPhoto && pendingPhoto.date) || todayISO();
   const catRadios = Object.entries(CATS).map(([k, c]) =>
     `<label><input type="radio" name="mkcat" value="${k}" ${k === cat ? 'checked' : ''}> ${c.emoji} ${c.label}</label>`).join('');
   document.getElementById('detailBody').innerHTML = `<h2>${m ? 'Edit marker' : 'Save marker'}</h2>
@@ -1359,7 +1374,7 @@ function openMarkerForm(id, lat, lon) {
   };
   fillTypes(cat, m && m.type);
   document.querySelectorAll('input[name=mkcat]').forEach(r => r.addEventListener('change', () => fillTypes(r.value, '')));
-  document.getElementById('mkCancel').addEventListener('click', () => m ? openMarker(m.id) : document.getElementById('detail').classList.remove('show'));
+  document.getElementById('mkCancel').addEventListener('click', () => { if (!m) pendingPhoto = null; m ? openMarker(m.id) : document.getElementById('detail').classList.remove('show'); });
   document.getElementById('mkForm').addEventListener('submit', ev => {
     ev.preventDefault();
     const rec = {
@@ -1371,6 +1386,11 @@ function openMarkerForm(id, lat, lon) {
     let target;
     if (m) { Object.assign(m, rec); target = m; }
     else { target = { id: 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), lat, lon, locked: true, created: Date.now(), ...rec }; myMarkers.push(target); }
+    if (!m && pendingPhoto) {
+      const pp = pendingPhoto; pendingPhoto = null;
+      PhotoDB.put({ id: newPhotoId(), spot: target.id, blob: pp.blob, w: pp.w, h: pp.h, date: pp.date, added: Date.now() })
+        .then(() => { if (document.getElementById('mkPhotos')) openMarker(target.id); }).catch(() => alert('The spot was saved, but this browser couldn’t store the photo.'));
+    }
     if (saveMarkers()) {
       drawMine();
       let shown = false; try { shown = localStorage.getItem('keep-safe-shown') === '1'; } catch (e) { }
@@ -1393,6 +1413,7 @@ function openMarker(id) {
     ${m.date ? `<p class="mk-date">📅 Observed ${obsDate(m.date)}</p>` : ''}
     <p class="sub">${m.lat.toFixed(5)}, ${m.lon.toFixed(5)} · saved ${d(m.created)}${m.updated && m.updated - m.created > 60000 ? ', updated ' + d(m.updated) : ''}</p>
     ${m.notes ? `<div class="mk-notes">${esc(m.notes)}</div>` : '<p class="layer-note">No notes yet. Tap Edit to add some.</p>'}
+    <div class="mk-photos" id="mkPhotos"></div>
     <div class="mk-actions">
       <button id="mkLock" aria-pressed="${!m.locked}">${m.locked ? '🔒 Locked' : '🔓 Unlocked'}</button>
       ${m.locked ? '' : '<button class="primary" id="mkMove">Move</button>'}
@@ -1407,8 +1428,10 @@ function openMarker(id) {
   if (mv) mv.onclick = () => { map.setView([m.lat, m.lon], Math.max(map.getZoom(), 14)); startPlacing({ moveId: id }); };
   document.getElementById('mkEdit').onclick = () => openMarkerForm(id);
   document.getElementById('mkShare').onclick = () => openShare([m], 'Share “' + m.name + '”');
+  renderSpotPhotos(m);
   document.getElementById('mkDel').onclick = () => {
-    if (confirm(`Delete “${m.name}”? This can’t be undone.`)) {
+    if (confirm(`Delete “${m.name}” and its photos? This can’t be undone.`)) {
+      PhotoDB.removeSpot(id).catch(() => { });
       myMarkers = myMarkers.filter(x => x.id !== id); saveMarkers(); drawMine();
       document.getElementById('detail').classList.remove('show');
     }
@@ -1508,6 +1531,7 @@ function openMyList() {
       : '<p>No saved spots yet. Tap <b>Add marker</b> to save your first one.</p>'}
     ${myMarkers.length ? backupStatusHTML() : ''}
     <div class="mk-actions">${myMarkers.length ? '<button class="primary" id="linkBackupBtn">📨 Send myself a backup link</button>' : ''}<button id="backupBtn" ${myMarkers.length ? '' : 'disabled'}>Back up to a file</button><button id="restoreBtn">Restore from file</button><button id="restoreLinkBtn">Restore from a backup link</button></div>
+    <div class="mk-actions"><button id="fromPhotoBtn">📷 New spot from a photo</button></div>
     <p><button class="info-btn" type="button" id="keepSafeBtn">ⓘ How to keep your spots safe</button></p>`;
   document.querySelectorAll('.chips button').forEach(b => b.onclick = () => { spotFilter = b.dataset.f; openMyList(); });
   document.querySelectorAll('.spot-list button').forEach(b => b.onclick = () => {
@@ -1523,6 +1547,7 @@ function openMyList() {
   const lb = document.getElementById('linkBackupBtn'); if (lb) lb.onclick = sendBackupLink;
   document.getElementById('keepSafeBtn').onclick = () => openKeepSafe();
   document.getElementById('restoreLinkBtn').onclick = restoreFromLink;
+  document.getElementById('fromPhotoBtn').onclick = spotFromPhoto;
   document.getElementById('restoreBtn').onclick = () => document.getElementById('restoreFile').click();
   document.getElementById('detail').classList.add('show');
 }
@@ -1545,7 +1570,9 @@ async function openShare(list, title) {
     <label class="layer-note" for="shareLink">Or send this link:</label>
     <input class="link-box" id="shareLink" readonly value="${esc(link)}">
     <div class="mk-actions">${navigator.share ? '<button class="primary" id="nativeShare">Share…</button>' : ''}<button id="copyLink">Copy link</button><button id="shareBack">Back</button></div>
-    <p class="layer-note">The spots travel inside the link itself; nothing is uploaded anywhere. Anyone with the link can add these spots, so only send it to people you trust with them.</p>`;
+    <div class="mk-actions"><button id="shareFile">📎 Share as a file, with photos</button></div>
+    <p class="layer-note">The spots travel inside the link itself; nothing is uploaded anywhere. Links and QR codes don’t carry photos; to include photos, share as a file and your buddy opens it with My spots → Restore from file. Only share with people you trust with these spots.</p>`;
+  document.getElementById('shareFile').onclick = () => shareFileWithPhotos(list);
   const ns = document.getElementById('nativeShare');
   if (ns) ns.onclick = () => navigator.share({ title: 'Spots from Wings & Water', text: list.length === 1 ? list[0].name : list.length + ' saved spots', url: link }).catch(() => { });
   document.getElementById('copyLink').onclick = async e => {
@@ -1597,9 +1624,15 @@ function showImport(list, source) {
     label();
     yes.onclick = () => {
       const now = Date.now(), touched = [];
-      fresh.forEach((m, i) => { const rec = { ...m, id: 'm' + (now + i).toString(36) + Math.random().toString(36).slice(2, 6), locked: true, created: now, updated: m.updated || now }; myMarkers.push(rec); touched.push(rec); });
+      fresh.forEach((m, i) => {
+        const { photos, ...spot } = m;
+        const rec = { ...spot, id: 'm' + (now + i).toString(36) + Math.random().toString(36).slice(2, 6), locked: true, created: now, updated: m.updated || now };
+        myMarkers.push(rec); touched.push(rec);
+        if (photos && photos.length) savePhotosFromImport(rec.id, photos);
+      });
       body.querySelectorAll('input[data-i]:checked').forEach(cb => {
         const { incoming, mine } = changed[+cb.dataset.i];
+        if (incoming.photos && incoming.photos.length) PhotoDB.forSpot(mine.id).then(l => { if (!l.length) savePhotosFromImport(mine.id, incoming.photos); }).catch(() => { });
         Object.assign(mine, { name: incoming.name, cat: incoming.cat, type: incoming.type, notes: incoming.notes, date: incoming.date,
           lat: incoming.lat, lon: incoming.lon, updated: incoming.updated || now });
         touched.push(mine);
@@ -1615,8 +1648,8 @@ function showImport(list, source) {
   document.getElementById('impNo').onclick = () => document.getElementById('detail').classList.remove('show');
 }
 
-function backupToFile() {
-  const data = { app: 'nh-water-map', kind: 'markers', version: 1, exported: new Date().toISOString(), markers: myMarkers };
+async function backupToFile() {
+  const data = { app: 'nh-water-map', kind: 'markers', version: 2, exported: new Date().toISOString(), markers: await spotsWithPhotos(myMarkers) };
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 1)], { type: 'application/json' }));
   a.download = 'my-spots-' + todayISO() + '.json';
@@ -1633,7 +1666,8 @@ document.getElementById('restoreFile').addEventListener('change', async e => {
     const list = (Array.isArray(data) ? data : data.markers || []).filter(m => m && isFinite(m.lat) && isFinite(m.lon)).map(m => ({
       name: String(m.name || 'Saved spot').slice(0, 80), cat: CATS[m.cat] ? m.cat : 'general', type: String(m.type || '').slice(0, 40),
       notes: String(m.notes || '').slice(0, 2000), lat: +m.lat, lon: +m.lon, date: /^\d{4}-\d{2}-\d{2}$/.test(m.date || '') ? m.date : '',
-      updated: +m.updated || +m.created || 0
+      updated: +m.updated || +m.created || 0,
+      photos: Array.isArray(m.photos) ? m.photos.slice(0, MAX_PHOTOS) : undefined
     }));
     if (!list.length) throw new Error('no spots');
     showImport(list, 'backup file “' + f.name + '”');
@@ -2241,7 +2275,7 @@ function openKeepSafe(afterId) {
     <h3 class="imp-h">Also helpful</h3>
     <p><b>Add this map to your Home Screen</b> (iPhone: Share → Add to Home Screen · Android: ⋮ → Add to Home screen). On iPhones that protects your spots from Safari’s weekly clean-up.</p>
     <p><b>iPhone note:</b> the Home Screen version keeps its <b>own separate</b> spots from Safari. To move spots into it, send yourself a backup link, then in the Home Screen version open My spots → <b>Restore from a backup link</b> and paste it.</p>
-    <p class="layer-note">Back up again whenever you add or change spots. My spots shows when you last did.</p>
+    <p class="layer-note">Back up again whenever you add or change spots. My spots shows when you last did. Photos are stored on this device too, and backup files include them.</p>
     <div class="mk-actions">${myMarkers.length ? '<button class="primary" id="ksLink">📨 Send myself a backup link</button><button id="ksFile">Save a backup file</button>' : ''}<button id="ksDone">${afterId ? 'Got it' : 'Close'}</button></div>`;
   document.getElementById('detail').classList.add('show');
   const l = document.getElementById('ksLink'); if (l) l.onclick = sendBackupLink;
@@ -2304,6 +2338,187 @@ function lowNote(day, lat, lon, lo) {
     .filter(o => o.mi <= 30).sort((a, b) => a.mi - b.mi).slice(0, 2);
   if (near.length) note += (note ? '<br>' : '') + 'Measured: ' + near.map(o => `${esc(o.name)} ${Math.round(o.low)} °F (${Math.round(o.mi)} mi)`).join(', ');
   return note ? `<small>${note}</small>` : '';
+}
+
+
+// ---------- Photos on spots: kept in this browser only (IndexedDB), shrunk, hidden data stripped ----------
+const MAX_PHOTOS = 3;
+const PhotoDB = (() => {
+  let dbp = null;
+  const open = () => dbp || (dbp = new Promise((res, rej) => {
+    const r = indexedDB.open('ww-photos', 1);
+    r.onupgradeneeded = () => { const st = r.result.createObjectStore('photos', { keyPath: 'id' }); st.createIndex('spot', 'spot'); };
+    r.onsuccess = () => res(r.result); r.onerror = () => { dbp = null; rej(r.error); };
+  }));
+  const run = (mode, fn) => open().then(db => new Promise((res, rej) => {
+    const t = db.transaction('photos', mode), req = fn(t.objectStore('photos'));
+    t.oncomplete = () => res(req && 'result' in req ? req.result : undefined); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error);
+  }));
+  const api = {
+    put: rec => run('readwrite', st => st.put(rec)),
+    remove: id => run('readwrite', st => st.delete(id)),
+    forSpot: spot => run('readonly', st => st.index('spot').getAll(spot)).then(l => (l || []).sort((a, b) => a.added - b.added)),
+    removeSpot: async spot => { for (const p of await api.forSpot(spot)) await api.remove(p.id); }
+  };
+  return api;
+})();
+const newPhotoId = () => 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+
+// Read when (and where) a JPEG photo was taken, from its hidden EXIF data
+async function readPhotoInfo(file) {
+  try {
+    const v = new DataView(await file.slice(0, 256 * 1024).arrayBuffer());
+    if (v.getUint16(0) !== 0xFFD8) return {};
+    for (let o = 2; o + 10 < v.byteLength;) {
+      const marker = v.getUint16(o), len = v.getUint16(o + 2);
+      if (marker === 0xFFE1 && v.getUint32(o + 4) === 0x45786966) return parseExif(v, o + 10);
+      if ((marker & 0xFF00) !== 0xFF00) break;
+      o += 2 + len;
+    }
+  } catch (e) { }
+  return {};
+}
+function parseExif(v, t) {
+  const le = v.getUint16(t) === 0x4949, u16 = p => v.getUint16(p, le), u32 = p => v.getUint32(p, le);
+  const ifd = off => { const tags = {}, n = u16(t + off); for (let i = 0; i < n; i++) { const e = t + off + 2 + i * 12; tags[u16(e)] = { type: u16(e + 2), count: u32(e + 4), at: e + 8 }; } return tags; };
+  const str = tg => { const p = tg.count > 4 ? t + u32(tg.at) : tg.at; let s = ''; for (let i = 0; i < tg.count - 1; i++) s += String.fromCharCode(v.getUint8(p + i)); return s; };
+  const rats = tg => { const p = t + u32(tg.at), out = []; for (let i = 0; i < tg.count; i++) out.push(u32(p + i * 8) / (u32(p + i * 8 + 4) || 1)); return out; };
+  const out = {}, i0 = ifd(u32(t + 4));
+  if (i0[0x8769]) { const ex = ifd(u32(i0[0x8769].at)); const dt = ex[0x9003] || ex[0x9004]; if (dt) out.taken = str(dt); }
+  if (!out.taken && i0[0x0132]) out.taken = str(i0[0x0132]);
+  if (i0[0x8825]) {
+    const g = ifd(u32(i0[0x8825].at));
+    if (g[2] && g[4]) {
+      const la = rats(g[2]), lo = rats(g[4]);
+      let lat = la[0] + la[1] / 60 + la[2] / 3600, lon = lo[0] + lo[1] / 60 + lo[2] / 3600;
+      if (g[1] && String.fromCharCode(v.getUint8(g[1].at)) === 'S') lat = -lat;
+      if (g[3] && String.fromCharCode(v.getUint8(g[3].at)) === 'W') lon = -lon;
+      if (isFinite(lat) && isFinite(lon) && (lat || lon)) { out.lat = lat; out.lon = lon; }
+    }
+  }
+  const m = (out.taken || '').match(/^(\d{4}):(\d{2}):(\d{2})/);
+  out.date = m && m[1] !== '0000' ? `${m[1]}-${m[2]}-${m[3]}` : '';
+  return out;
+}
+// Shrink to about 1600 px on the long side. Redrawing it also drops the hidden data (date, place, phone model).
+async function shrinkPhoto(file, max = 1600) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('Couldn’t read that photo')); i.src = url; });
+    const k = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+    const w = Math.max(1, Math.round(img.naturalWidth * k)), h = Math.max(1, Math.round(img.naturalHeight * k));
+    const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+    cv.getContext('2d').drawImage(img, 0, 0, w, h);
+    const blob = await new Promise(res => cv.toBlob(res, 'image/jpeg', 0.8));
+    if (!blob) throw new Error('Couldn’t shrink that photo');
+    return { blob, w, h };
+  } finally { URL.revokeObjectURL(url); }
+}
+async function preparePhoto(file) {
+  const info = await readPhotoInfo(file);   // read first, before the hidden data is dropped
+  const { blob, w, h } = await shrinkPhoto(file);
+  return { blob, w, h, date: info.date || '', lat: info.lat, lon: info.lon };
+}
+function pickPhotos(multiple, onPicked) {
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = 'image/*'; inp.multiple = multiple; inp.style.display = 'none';
+  inp.onchange = () => { const files = [...(inp.files || [])]; inp.remove(); if (files.length) onPicked(files); };
+  document.body.appendChild(inp); inp.click();
+}
+
+let thumbUrls = [];
+const dropThumbs = () => { thumbUrls.forEach(u => URL.revokeObjectURL(u)); thumbUrls = []; };
+async function renderSpotPhotos(m) {
+  const box = document.getElementById('mkPhotos');
+  if (!box) return;
+  let list;
+  try { list = await PhotoDB.forSpot(m.id); }
+  catch (e) { box.innerHTML = '<p class="layer-note">This browser can’t store photos (private browsing can block it).</p>'; return; }
+  dropThumbs();
+  box.innerHTML = list.map(p => { const u = URL.createObjectURL(p.blob); thumbUrls.push(u);
+      return `<button class="ph-thumb" data-pid="${p.id}" aria-label="View photo${p.date ? ' from ' + esc(obsDate(p.date)) : ''}"><img src="${u}" alt=""></button>`; }).join('')
+    + (list.length < MAX_PHOTOS ? `<button class="ph-add" id="phAdd">📷<span>Add photo</span><small>${list.length}/${MAX_PHOTOS}</small></button>` : '');
+  box.querySelectorAll('.ph-thumb').forEach(b => b.onclick = () => viewPhoto(list.find(p => p.id === b.dataset.pid), m));
+  const add = document.getElementById('phAdd');
+  if (add) add.onclick = () => pickPhotos(true, files => addPhotosToSpot(m, files.slice(0, MAX_PHOTOS - list.length)));
+}
+async function addPhotosToSpot(m, files) {
+  flashHint('Adding photo' + (files.length > 1 ? 's' : '') + '…');
+  let firstDate = '';
+  for (const f of files) {
+    try {
+      const p = await preparePhoto(f);
+      await PhotoDB.put({ id: newPhotoId(), spot: m.id, blob: p.blob, w: p.w, h: p.h, date: p.date, added: Date.now() });
+      firstDate = firstDate || p.date;
+    } catch (e) { alert((e && e.message) || 'Couldn’t add that photo.'); }
+  }
+  if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => { });
+  try { localStorage.setItem('spots-changed', String(Date.now())); } catch (e) { }
+  if (firstDate && firstDate !== m.date && confirm(`This photo was taken ${obsDate(firstDate)}. Use that as the date observed for “${m.name}”?`)) {
+    m.date = firstDate; m.updated = Date.now(); saveMarkers(); drawMine();
+  }
+  openMarker(m.id);
+}
+function viewPhoto(p, m) {
+  if (!p) return;
+  const u = URL.createObjectURL(p.blob);
+  const box = document.createElement('div');
+  box.className = 'ph-view'; box.setAttribute('role', 'dialog'); box.setAttribute('aria-label', 'Photo');
+  box.innerHTML = `<img src="${u}" alt="Photo for ${esc(m.name)}"><div class="ph-bar"><span>${p.date ? 'Taken ' + esc(obsDate(p.date)) : esc(m.name)}</span>
+    <button class="danger" id="phDel">Delete photo</button><button class="primary" id="phClose">Close</button></div>`;
+  document.body.appendChild(box);
+  const close = () => { URL.revokeObjectURL(u); box.remove(); };
+  box.querySelector('#phClose').onclick = close;
+  box.onclick = e => { if (e.target === box) close(); };
+  box.querySelector('#phDel').onclick = async () => {
+    if (!confirm('Delete this photo? This can’t be undone.')) return;
+    await PhotoDB.remove(p.id); close(); openMarker(m.id);
+  };
+  box.querySelector('#phClose').focus();
+}
+
+// New spot from a photo: uses the photo's place (if it has one) and date
+let pendingPhoto = null;
+function spotFromPhoto() {
+  pickPhotos(false, async files => {
+    flashHint('Reading photo…');
+    try { pendingPhoto = await preparePhoto(files[0]); }
+    catch (e) { alert((e && e.message) || 'Couldn’t read that photo.'); return; }
+    if (pendingPhoto.lat != null) map.setView([pendingPhoto.lat, pendingPhoto.lon], Math.max(map.getZoom(), 15));
+    startPlacing();
+    document.getElementById('placeMsg').textContent = pendingPhoto.lat != null
+      ? 'The crosshair is where the photo was taken. Adjust if needed, then save.'
+      : 'This photo doesn’t include a location. Put the crosshair on the spot.';
+  });
+}
+
+// Photos for backups and photo-sharing files (as text, so they fit in one file)
+const blobToDataURL = b => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(r.error); r.readAsDataURL(b); });
+async function spotsWithPhotos(list) {
+  const out = [];
+  for (const m of list) {
+    let photos = [];
+    try { photos = await Promise.all((await PhotoDB.forSpot(m.id)).map(async p => ({ data: await blobToDataURL(p.blob), date: p.date || '', w: p.w, h: p.h }))); } catch (e) { }
+    out.push(photos.length ? { ...m, photos } : { ...m });
+  }
+  return out;
+}
+async function savePhotosFromImport(spotId, photos, already = 0) {
+  for (const ph of (photos || []).slice(0, MAX_PHOTOS - already)) {
+    if (typeof ph.data !== 'string' || !ph.data.startsWith('data:image/')) continue;
+    try { const blob = await (await fetch(ph.data)).blob(); await PhotoDB.put({ id: newPhotoId(), spot: spotId, blob, w: +ph.w || 0, h: +ph.h || 0, date: /^\d{4}-\d{2}-\d{2}$/.test(ph.date || '') ? ph.date : '', added: Date.now() }); } catch (e) { }
+  }
+}
+async function shareFileWithPhotos(list) {
+  flashHint('Preparing file…');
+  const data = { app: 'nh-water-map', kind: 'markers', version: 2, exported: new Date().toISOString(), markers: await spotsWithPhotos(list) };
+  const name = (list.length === 1 ? list[0].name.replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '-').slice(0, 40) || 'spot' : 'spots') + '-' + todayISO() + '.json';
+  const file = new File([JSON.stringify(data)], name, { type: 'application/json' });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: 'Spots from Wings & Water' }); return; } catch (e) { if (e && e.name === 'AbortError') return; }
+  }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
 
 function updateWetNote() {
