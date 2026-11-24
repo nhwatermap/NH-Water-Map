@@ -353,6 +353,22 @@ h1.brand img{height:44px;width:auto;display:block}
 .ph-bar button{font:inherit;font-weight:700;border-radius:8px;padding:.5rem .9rem;cursor:pointer;border:1px solid #888;background:transparent;color:#eee}
 .ph-bar .primary{background:var(--accent);color:var(--panel);border-color:var(--accent)}
 .ph-bar .danger{color:#ff8a80;border-color:#ff8a80}
+
+.mk-status{display:grid;grid-template-columns:repeat(3,1fr);gap:.4rem}
+.mk-status:has(input[value=keep]){grid-template-columns:1fr 1fr}
+.mk-status label{margin:0;font-weight:600;display:flex;align-items:center;justify-content:center;gap:.35rem;border:1.5px solid var(--line);border-radius:8px;padding:.5rem .4rem;cursor:pointer;text-align:center}
+.mk-status label:has(input:checked){border-color:var(--accent);background:color-mix(in srgb,var(--accent) 16%,transparent)}
+.mk-status input{accent-color:var(--accent)}
+.mk-err{color:#c0392b;font-weight:600;margin:.3rem 0 0;font-size:.9rem}
+.st-badge.st-avoid{border-color:#b3261e;color:#e5776d}
+.st-badge.st-try{border-style:dashed}
+.mk-moveto,.mk-reasons{display:flex;flex-wrap:wrap;gap:.4rem;align-items:center;margin:.4rem 0 .2rem}
+.mk-moveto span,.mk-reasons span{font-size:.85rem;color:var(--muted);margin-right:.1rem}
+.mk-moveto button,.mk-reasons button{font:inherit;font-size:.88rem;border:1px solid var(--line);background:transparent;color:var(--ink);border-radius:999px;padding:.3rem .7rem;cursor:pointer}
+.mk-reasons[hidden]{display:none}
+.st-checks{display:flex;flex-wrap:wrap;gap:.3rem .9rem;margin:-.1rem 0 .5rem 2.6rem;font-size:.86rem}
+.st-checks label{display:flex;align-items:center;gap:.3rem;cursor:pointer}
+.st-checks input{accent-color:var(--accent);width:1rem;height:1rem}
 </style>
 </head>
 <body>
@@ -381,6 +397,9 @@ h1.brand img{height:44px;width:auto;display:block}
     <div class="layers-body" id="layersBody">
       <label class="layer-row"><input type="checkbox" data-layer="stations" data-default="on"><span class="stn-swatch" aria-hidden="true"><i></i><i></i></span><span><b>Stations</b><small>River, lake and dam readings: the circles and squares. Turn off to see the map or weather layers underneath.</small></span></label>
       <label class="layer-row"><input type="checkbox" data-layer="mine" data-default="on"><span class="acc-icon" style="background:#c0392b;border-radius:50% 50% 50% 0;transform:rotate(-45deg)"></span><span><b>My markers</b><small>Spots you’ve saved. They’re stored only in this browser on this device.</small></span></label>
+      <div class="st-checks" role="group" aria-label="Which saved spots to show">
+        <label><input type="checkbox" data-st="try"> 🎯 To try</label><label><input type="checkbox" data-st="mine"> ⭐ My spots</label><label><input type="checkbox" data-st="avoid"> ⛔ Avoid</label>
+      </div>
       <label class="layer-row"><input type="checkbox" data-layer="tides" data-default="on"><span class="acc-icon tide" data-icon="tide"></span><span><b>Tides</b><small>Seacoast tide times and heights for the next 7 days. Live NOAA stations also show the current water level, water temp and wind.</small></span></label>
       <label class="layer-row"><input type="checkbox" data-layer="ramp"><span class="acc-icon" data-icon="ramp"></span><span><b>Boat ramps</b><small>Launch sites for trailered boats, with a concrete, gravel or paved ramp.</small></span></label>
       <label class="layer-row"><input type="checkbox" data-layer="cartop"><span class="acc-icon cartop" data-icon="cartop"></span><span><b>Cartop access</b><small>Hand-carry launches for canoes, kayaks and small boats you can lift off a car. No trailer ramp.</small></span></label>
@@ -835,7 +854,7 @@ const WetlandLayer = L.TileLayer.extend({
 });
 const wetlands = new WetlandLayer('', { tileSize: 256, minZoom: WET_MIN_ZOOM, maxZoom: 18, opacity: 1,
   attribution: 'Wetlands: U.S. Fish &amp; Wildlife Service NWI' });
-map.attributionControl.addAttribution('Page v55 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
+map.attributionControl.addAttribution('Page v56 | Tides & buoys: NOAA | Great Bay: GBNERR via NERACOOS');
 // A slow or failed square is retried up to twice (after 2 s, then 5 s). We never switch to the
 // server's standard green colors; a square that still fails just stays blank.
 wetlands.on('tileerror', e => {
@@ -1279,12 +1298,39 @@ const CATS = {
   hunting: { label: 'Hunting', emoji: '🦆', color: '#b5541c', types: ['Ducks', 'Geese', 'Sea ducks', 'Scouting'] },
   fishing: { label: 'Fishing', emoji: '🎣', color: '#1f6fb2', types: ['Trout', 'Bass', 'Panfish', 'Ice fishing'] },
   boating: { label: 'Boating / Paddling', emoji: '🛶', color: '#11806f', types: ['Put-in / take-out', 'Good paddle', 'Hazard', 'Campsite'] },
-  general: { label: 'General / Other', emoji: '📍', color: '#5b6470', types: [] },
-  avoid: { label: 'Avoid', emoji: '⛔', color: '#b3261e', types: ['No boat access', 'Too shallow / blocked', 'Posted / private', 'Hazard', 'Not worth it'] }
+  general: { label: 'General / Other', emoji: '📍', color: '#5b6470', types: [] }
 };
+// What you know about a spot, separate from what it's for
+const STATUS = {
+  try:   { label: 'To try',  icon: '🎯', plural: 'To try' },
+  mine:  { label: 'My spot', icon: '⭐', plural: 'My spots' },
+  avoid: { label: 'Avoid',   icon: '⛔', plural: 'Avoid' }
+};
+const AVOID_REASONS = ['No boat access', 'Too shallow / blocked', 'Posted / private', 'Hazard', 'Not worth it'];
 const MK_KEY = 'myMarkers-v1';
 let myMarkers = [];
 try { myMarkers = JSON.parse(localStorage.getItem(MK_KEY) || '[]'); } catch (e) { myMarkers = []; }
+// Spots saved before statuses existed: they were in My spots; old "Avoid" category becomes the Avoid status
+(function migrateStatus() {
+  let changed = false;
+  for (const m of myMarkers) {
+    if (m.status) continue;
+    if (m.cat === 'avoid') { m.status = 'avoid'; m.reason = m.type || ''; m.cat = 'general'; m.type = ''; }
+    else m.status = 'mine';
+    m.history = m.history || [{ s: m.status, t: m.created || Date.now() }];
+    changed = true;
+  }
+  if (changed) try { localStorage.setItem(MK_KEY, JSON.stringify(myMarkers)); } catch (e) { }
+})();
+// Which statuses show on the map and in the list (any combination)
+let statusShow = { try: true, mine: true, avoid: true };
+try { Object.assign(statusShow, JSON.parse(localStorage.getItem('spot-status-show') || '{}')); } catch (e) { }
+function setStatusShow(k, on) {
+  statusShow[k] = on;
+  try { localStorage.setItem('spot-status-show', JSON.stringify(statusShow)); } catch (e) { }
+  document.querySelectorAll(`[data-st="${k}"]`).forEach(cb => { cb.checked = on; });
+  if (typeof drawMine === 'function') drawMine();
+}
 function saveMarkers() {
   try {
     localStorage.setItem(MK_KEY, JSON.stringify(myMarkers));
@@ -1299,16 +1345,24 @@ const mineLayer = L.layerGroup();
 overlayLayers.mine = mineLayer;
 
 function pinIcon(m) {
-  const c = (CATS[m.cat] || CATS.general);
-  return L.divIcon({ className: '', iconSize: [30, 38], iconAnchor: [15, 37],
-    html: `<svg class="mk-pin" viewBox="0 0 30 38" aria-hidden="true"><path d="M15 37C15 37 2 22.5 2 14a13 13 0 0 1 26 0c0 8.5-13 23-13 23Z" fill="${c.color}" stroke="#fff" stroke-width="2"/><circle cx="15" cy="14" r="8.5" fill="#fff"/><text x="15" y="18.5" font-size="11" text-anchor="middle">${c.emoji}</text></svg>` });
+  const c = (CATS[m.cat] || CATS.general), shape = 'M15 37C15 37 2 22.5 2 14a13 13 0 0 1 26 0c0 8.5-13 23-13 23Z';
+  let body;
+  if (m.status === 'avoid')        // red pin with an ✕
+    body = `<path d="${shape}" fill="#b3261e" stroke="#fff" stroke-width="2"/><circle cx="15" cy="14" r="8.5" fill="#fff"/><path d="M11 10l8 8M19 10l-8 8" stroke="#b3261e" stroke-width="2.6" stroke-linecap="round"/>`;
+  else if (m.status === 'try')     // hollow, dashed outline: not checked out yet
+    body = `<path d="${shape}" fill="rgba(255,255,255,.92)" stroke="${c.color}" stroke-width="2.6" stroke-dasharray="4 2.4"/><text x="15" y="18.5" font-size="11" text-anchor="middle">${c.emoji}</text>`;
+  else                             // solid: a confirmed spot
+    body = `<path d="${shape}" fill="${c.color}" stroke="#fff" stroke-width="2"/><circle cx="15" cy="14" r="8.5" fill="#fff"/><text x="15" y="18.5" font-size="11" text-anchor="middle">${c.emoji}</text>`;
+  return L.divIcon({ className: '', iconSize: [30, 38], iconAnchor: [15, 37], html: `<svg class="mk-pin" viewBox="0 0 30 38" aria-hidden="true">${body}</svg>` });
 }
 function drawMine() {
   mineLayer.clearLayers();
   for (const m of myMarkers) {
     if (placing && placing.moveId === m.id) continue; // hidden while being moved
+    if (!statusShow[m.status || 'mine']) continue;      // hidden by the To try / My spots / Avoid checkboxes
+    const st = STATUS[m.status] || STATUS.mine;
     L.marker([m.lat, m.lon], { icon: pinIcon(m), pane: 'mine', keyboard: true, title: m.name })
-      .bindTooltip(esc(m.name) + (m.date ? '<br>' + obsDate(m.date) : ''), { offset: [0, -30], direction: 'top' })
+      .bindTooltip(esc(m.name) + `<br>${st.icon} ${st.label}${m.status === 'avoid' && m.reason ? ': ' + esc(m.reason) : ''}` + (m.date ? ' · ' + obsDate(m.date) : ''), { offset: [0, -30], direction: 'top' })
       .on('click', () => openMarker(m.id)).addTo(mineLayer);
   }
 }
@@ -1355,11 +1409,18 @@ function openMarkerForm(id, lat, lon) {
   const dateVal = m ? (m.date || isoDate(new Date(m.created))) : (pendingPhoto && pendingPhoto.date) || todayISO();
   const catRadios = Object.entries(CATS).map(([k, c]) =>
     `<label><input type="radio" name="mkcat" value="${k}" ${k === cat ? 'checked' : ''}> ${c.emoji} ${c.label}</label>`).join('');
+  const st0 = m ? m.status : '';
+  const statusRadios = Object.entries(STATUS).map(([k, x]) =>
+    `<label class="st-${k}"><input type="radio" name="mkstatus" value="${k}" ${k === st0 ? 'checked' : ''}> ${x.icon} ${x.label}</label>`).join('');
+  const reasonOpts = '<option value="">Choose a reason (optional)</option>' + AVOID_REASONS.map(r => `<option ${m && m.reason === r ? 'selected' : ''}>${esc(r)}</option>`).join('');
   document.getElementById('detailBody').innerHTML = `<h2>${m ? 'Edit marker' : 'Save marker'}</h2>
     <p class="sub">${(m ? m.lat : lat).toFixed(5)}, ${(m ? m.lon : lon).toFixed(5)}</p>
     <form class="mk-form" id="mkForm">
+      <label>Status</label><div class="mk-status" role="radiogroup" aria-label="Status">${statusRadios}</div>
+      <p class="mk-err" id="mkStatusErr" hidden>Pick To try, My spot or Avoid.</p>
+      <div id="mkReasonWrap" ${st0 === 'avoid' ? '' : 'hidden'}><label for="mkReason">Why avoid it?</label><select id="mkReason">${reasonOpts}</select></div>
       <label for="mkName">Name</label><input type="text" id="mkName" maxlength="80" value="${esc(name)}" required>
-      <label for="mkDate">Date observed</label><input type="date" id="mkDate" value="${esc(dateVal)}" max="${todayISO()}">
+      <label for="mkDate" id="mkDateLabel">${st0 === 'try' ? 'Date noted' : 'Date observed'}</label><input type="date" id="mkDate" value="${esc(dateVal)}" max="${todayISO()}">
       <label>Category</label><div class="mk-cats">${catRadios}</div>
       <label for="mkType">Type (optional)</label><select id="mkType"></select>
       <label for="mkNotes">Notes (optional)</label><textarea id="mkNotes" maxlength="2000" placeholder="Anything worth remembering…">${m ? esc(m.notes || '') : ''}</textarea>
@@ -1374,18 +1435,27 @@ function openMarkerForm(id, lat, lon) {
   };
   fillTypes(cat, m && m.type);
   document.querySelectorAll('input[name=mkcat]').forEach(r => r.addEventListener('change', () => fillTypes(r.value, '')));
+  document.querySelectorAll('input[name=mkstatus]').forEach(r => r.addEventListener('change', () => {
+    document.getElementById('mkReasonWrap').hidden = r.value !== 'avoid';
+    document.getElementById('mkDateLabel').textContent = r.value === 'try' ? 'Date noted' : 'Date observed';
+    document.getElementById('mkStatusErr').hidden = true;
+  }));
   document.getElementById('mkCancel').addEventListener('click', () => { if (!m) pendingPhoto = null; m ? openMarker(m.id) : document.getElementById('detail').classList.remove('show'); });
   document.getElementById('mkForm').addEventListener('submit', ev => {
     ev.preventDefault();
+    const stPick = (document.querySelector('input[name=mkstatus]:checked') || {}).value;
+    if (!stPick) { const e = document.getElementById('mkStatusErr'); e.hidden = false; if (e.scrollIntoView) e.scrollIntoView({ block: 'center' }); return; }
     const rec = {
+      status: stPick, reason: stPick === 'avoid' ? document.getElementById('mkReason').value : '',
       name: document.getElementById('mkName').value.trim() || name,
       cat: (document.querySelector('input[name=mkcat]:checked') || {}).value || 'general',
       type: typeSel.value || '', notes: document.getElementById('mkNotes').value.trim(), updated: Date.now(),
       date: document.getElementById('mkDate').value || ''
     };
     let target;
-    if (m) { Object.assign(m, rec); target = m; }
-    else { target = { id: 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), lat, lon, locked: true, created: Date.now(), ...rec }; myMarkers.push(target); }
+    if (m) { if (m.status !== rec.status) (m.history = m.history || []).push({ s: rec.status, t: Date.now() }); Object.assign(m, rec); target = m; }
+    else { target = { id: 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), lat, lon, locked: true, created: Date.now(), history: [{ s: rec.status, t: Date.now() }], ...rec }; myMarkers.push(target); }
+    if (!statusShow[rec.status]) setStatusShow(rec.status, true);   // make sure you can see what you just saved
     if (!m && pendingPhoto) {
       const pp = pendingPhoto; pendingPhoto = null;
       PhotoDB.put({ id: newPhotoId(), spot: target.id, blob: pp.blob, w: pp.w, h: pp.h, date: pp.date, added: Date.now() })
@@ -1406,11 +1476,17 @@ function openMarkerForm(id, lat, lon) {
 function openMarker(id) {
   const m = myMarkers.find(x => x.id === id);
   if (!m) return;
-  const c = CATS[m.cat] || CATS.general;
+  const c = CATS[m.cat] || CATS.general, st = STATUS[m.status] || STATUS.mine;
   const d = t => new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-  document.getElementById('detailBody').innerHTML = `<span class="badge">${c.emoji} ${esc(c.label)}${m.type ? ' · ' + esc(m.type) : ''}</span>
+  const hist = (m.history || []).map((h, i) => `${i ? 'Moved to ' + (STATUS[h.s] || STATUS.mine).plural : 'Added ' + (h.s === 'try' ? 'to try' : 'to ' + (STATUS[h.s] || STATUS.mine).plural)} ${d(h.t)}`).join(' · ');
+  const moveBtns = Object.entries(STATUS).filter(([k]) => k !== m.status).map(([k, x]) => `<button data-move="${k}">${x.icon} ${x.label}</button>`).join('');
+  document.getElementById('detailBody').innerHTML = `<span class="badge st-badge st-${m.status || 'mine'}">${st.icon} ${st.label}${m.status === 'avoid' && m.reason ? ' · ' + esc(m.reason) : ''}</span>
+    <span class="badge">${c.emoji} ${esc(c.label)}${m.type ? ' · ' + esc(m.type) : ''}</span>
     <h2>${esc(m.name)}</h2>
-    ${m.date ? `<p class="mk-date">📅 Observed ${obsDate(m.date)}</p>` : ''}
+    <div class="mk-moveto"><span>Move to:</span>${moveBtns}</div>
+    <div class="mk-reasons" id="mkReasons" hidden><span>Why avoid it?</span>${AVOID_REASONS.map(r => `<button data-reason="${esc(r)}">${esc(r)}</button>`).join('')}<button data-reason="">No reason</button></div>
+    ${m.date ? `<p class="mk-date">📅 ${m.status === 'try' ? 'Noted' : 'Observed'} ${obsDate(m.date)}</p>` : ''}
+    ${hist ? `<p class="layer-note">${hist}</p>` : ''}
     <p class="sub">${m.lat.toFixed(5)}, ${m.lon.toFixed(5)} · saved ${d(m.created)}${m.updated && m.updated - m.created > 60000 ? ', updated ' + d(m.updated) : ''}</p>
     ${m.notes ? `<div class="mk-notes">${esc(m.notes)}</div>` : '<p class="layer-note">No notes yet. Tap Edit to add some.</p>'}
     <div class="mk-photos" id="mkPhotos"></div>
@@ -1427,6 +1503,11 @@ function openMarker(id) {
   const mv = document.getElementById('mkMove');
   if (mv) mv.onclick = () => { map.setView([m.lat, m.lon], Math.max(map.getZoom(), 14)); startPlacing({ moveId: id }); };
   document.getElementById('mkEdit').onclick = () => openMarkerForm(id);
+  document.querySelectorAll('[data-move]').forEach(b => b.onclick = () => {
+    if (b.dataset.move === 'avoid') { document.getElementById('mkReasons').hidden = false; return; }
+    moveSpot(m, b.dataset.move);
+  });
+  document.querySelectorAll('[data-reason]').forEach(b => b.onclick = () => moveSpot(m, 'avoid', b.dataset.reason));
   document.getElementById('mkShare').onclick = () => openShare([m], 'Share “' + m.name + '”');
   renderSpotPhotos(m);
   document.getElementById('mkDel').onclick = () => {
@@ -1478,6 +1559,7 @@ drawMine();
 // ---------- My spots list, sharing (QR code / link) and backup ----------
 const CAT_CODE = { hunting: 'h', fishing: 'f', boating: 'b', general: 'g', avoid: 'a' };
 const CODE_CAT = { h: 'hunting', f: 'fishing', b: 'boating', g: 'general', a: 'avoid' };
+const STATUS_CODE = { try: 't', mine: 'm', avoid: 'a' }, CODE_STATUS = { t: 'try', m: 'mine', a: 'avoid' };
 const QR_MAX = 1500; // longer links make QR codes too dense to scan reliably from a screen
 function toB64url(bytes) {
   let bin = '';
@@ -1490,7 +1572,7 @@ function fromB64url(str) {
   return Uint8Array.from(atob(str), c => c.charCodeAt(0));
 }
 async function packMarkers(list) {
-  const json = JSON.stringify({ v: 1, m: list.map(m => [m.name, CAT_CODE[m.cat] || 'g', m.type || '', m.notes || '', +(+m.lat).toFixed(5), +(+m.lon).toFixed(5), m.date || '', Math.round((m.updated || m.created || 0) / 1000)]) });
+  const json = JSON.stringify({ v: 1, m: list.map(m => [m.name, CAT_CODE[m.cat] || 'g', m.type || '', m.notes || '', +(+m.lat).toFixed(5), +(+m.lon).toFixed(5), m.date || '', Math.round((m.updated || m.created || 0) / 1000), STATUS_CODE[m.status] || 'm', m.reason || '']) });
   const bytes = new TextEncoder().encode(json);
   if (window.CompressionStream) {
     const out = await new Response(new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate-raw'))).arrayBuffer();
@@ -1505,27 +1587,35 @@ async function unpackMarkers(str) {
   return (data.m || []).filter(r => Array.isArray(r) && isFinite(r[4]) && isFinite(r[5])).map(r => ({
     name: String(r[0] || 'Shared spot').slice(0, 80), cat: CODE_CAT[r[1]] || 'general', type: String(r[2] || '').slice(0, 40),
     notes: String(r[3] || '').slice(0, 2000), lat: +r[4], lon: +r[5], date: /^\d{4}-\d{2}-\d{2}$/.test(r[6] || '') ? r[6] : '',
-    updated: isFinite(r[7]) && r[7] > 0 ? r[7] * 1000 : 0
-  }));
+    updated: isFinite(r[7]) && r[7] > 0 ? r[7] * 1000 : 0,
+    status: CODE_STATUS[r[8]] || (r[1] === 'a' ? 'avoid' : ''), reason: String(r[9] || (r[1] === 'a' ? r[2] || '' : '')).slice(0, 40)
+  })).map(fromOldAvoid);
 }
+// Spots shared from before statuses existed used an "Avoid" category
+function fromOldAvoid(m) { if (m.cat === 'avoid') { m.status = 'avoid'; m.reason = m.reason || m.type || ''; m.cat = 'general'; m.type = ''; } return m; }
 const pageBase = () => location.origin + location.pathname;
 const spotDate = m => m.date || isoDate(new Date(m.created || Date.now()));
 const sortSpots = list => list.slice().sort((a, b) => spotDate(b).localeCompare(spotDate(a)));
 
 let spotFilter = 'all';
 function openMyList() {
-  const counts = { all: myMarkers.length };
-  for (const m of myMarkers) counts[m.cat] = (counts[m.cat] || 0) + 1;
+  const visible = myMarkers.filter(m => statusShow[m.status || 'mine']);
+  const counts = { all: visible.length }, stCounts = {};
+  for (const m of visible) counts[m.cat] = (counts[m.cat] || 0) + 1;
+  for (const m of myMarkers) stCounts[m.status || 'mine'] = (stCounts[m.status || 'mine'] || 0) + 1;
   if (spotFilter !== 'all' && !counts[spotFilter]) spotFilter = 'all';
-  const shown = sortSpots(myMarkers.filter(m => spotFilter === 'all' || m.cat === spotFilter));
+  const shown = sortSpots(visible.filter(m => spotFilter === 'all' || m.cat === spotFilter));
+  const stChips = Object.entries(STATUS).map(([k, x]) => `<button data-stf="${k}" aria-pressed="${!!statusShow[k]}">${x.icon} ${x.plural} (${stCounts[k] || 0})</button>`).join('');
   const chip = (k, label) => counts[k] ? `<button data-f="${k}" aria-pressed="${spotFilter === k}">${label} (${counts[k]})</button>` : '';
   const chips = chip('all', 'All') + Object.entries(CATS).map(([k, c]) => chip(k, c.emoji + ' ' + c.label.split(' /')[0])).join('');
   const rows = shown.map(m => {
     const c = CATS[m.cat] || CATS.general;
-    return `<li><button data-id="${m.id}"><span class="em" aria-hidden="true">${c.emoji}</span><span><b>${esc(m.name)}</b><small>${m.date ? obsDate(m.date) : 'No date'}${m.type ? ' · ' + esc(m.type) : ''}</small></span></button></li>`;
+    const st = STATUS[m.status] || STATUS.mine;
+    return `<li><button data-id="${m.id}"><span class="em" aria-hidden="true">${c.emoji}</span><span><b>${esc(m.name)}</b><small>${st.icon} ${st.label}${m.status === 'avoid' && m.reason ? ' (' + esc(m.reason) + ')' : ''} · ${m.date ? obsDate(m.date) : 'No date'}${m.type ? ' · ' + esc(m.type) : ''}</small></span></button></li>`;
   }).join('');
   document.getElementById('detailBody').innerHTML = `<h2>My spots</h2>
-    ${myMarkers.length ? `<div class="chips" role="group" aria-label="Filter by category">${chips}</div>
+    ${myMarkers.length ? `<div class="chips st-chips" role="group" aria-label="Show statuses (also on the map)">${stChips}</div>
+      <div class="chips" role="group" aria-label="Filter by category">${chips}</div>
       <ul class="spot-list">${rows}</ul>
       <div class="mk-actions"><button class="primary" id="shareShown">Share ${shown.length === myMarkers.length ? 'all' : 'these'} (${shown.length})</button></div>`
       : '<p>No saved spots yet. Tap <b>Add marker</b> to save your first one.</p>'}
@@ -1533,7 +1623,8 @@ function openMyList() {
     <div class="mk-actions">${myMarkers.length ? '<button class="primary" id="linkBackupBtn">📨 Send myself a backup link</button>' : ''}<button id="backupBtn" ${myMarkers.length ? '' : 'disabled'}>Back up to a file</button><button id="restoreBtn">Restore from file</button><button id="restoreLinkBtn">Restore from a backup link</button></div>
     <div class="mk-actions"><button id="fromPhotoBtn">📷 New spot from a photo</button></div>
     <p><button class="info-btn" type="button" id="keepSafeBtn">ⓘ How to keep your spots safe</button></p>`;
-  document.querySelectorAll('.chips button').forEach(b => b.onclick = () => { spotFilter = b.dataset.f; openMyList(); });
+  document.querySelectorAll('.chips button[data-f]').forEach(b => b.onclick = () => { spotFilter = b.dataset.f; openMyList(); });
+  document.querySelectorAll('.chips button[data-stf]').forEach(b => b.onclick = () => { setStatusShow(b.dataset.stf, !statusShow[b.dataset.stf]); openMyList(); });
   document.querySelectorAll('.spot-list button').forEach(b => b.onclick = () => {
     const m = myMarkers.find(x => x.id === b.dataset.id);
     if (!m) return;
@@ -1587,7 +1678,8 @@ function showImport(list, source) {
   const dist = (a, b) => Math.max(Math.abs(a.lat - b.lat), Math.abs(a.lon - b.lon));
   // Same spot = same name within ~10 m, or anything within ~3 m (a renamed spot)
   const findMatch = n => myMarkers.find(m => (sameName(m, n) && dist(m, n) < 0.0001) || dist(m, n) < 0.00003);
-  const FIELDS = [['name', 'name'], ['cat', 'category'], ['type', 'type'], ['notes', 'notes'], ['date', 'date']];
+  const FIELDS = [['name', 'name'], ['cat', 'category'], ['type', 'type'], ['notes', 'notes'], ['date', 'date'], ['status', 'status'], ['reason', 'avoid reason']];
+  list = list.map(fromOldAvoid);
   const fresh = [], changed = [];
   let skipped = 0, older = 0;
   for (const n of list) {
@@ -1610,30 +1702,38 @@ function showImport(list, source) {
   } else {
     body.innerHTML = `<h2>Spots from ${esc(source)}</h2>
       ${notes ? `<p class="sub">${notes}</p>` : ''}
-      ${fresh.length ? `<h3 class="imp-h">New (${fresh.length})</h3><ul class="spot-list">${freshRows}</ul>${fresh.length > 60 ? `<p class="layer-note">…and ${fresh.length - 60} more</p>` : ''}` : ''}
+      ${fresh.length ? `<h3 class="imp-h">New (${fresh.length})</h3><ul class="spot-list">${freshRows}</ul>${fresh.length > 60 ? `<p class="layer-note">…and ${fresh.length - 60} more</p>` : ''}
+        <h3 class="imp-h">Add the new ones as:</h3><div class="mk-status" role="radiogroup" aria-label="Add new spots as">
+          <label><input type="radio" name="impas" value="keep"> As they were shared</label>
+          ${Object.entries(STATUS).map(([k, x]) => `<label class="st-${k}"><input type="radio" name="impas" value="${k}"> ${x.icon} ${x.label}</label>`).join('')}</div>` : ''}
       ${changed.length ? `<h3 class="imp-h">Edited more recently on the other device (${changed.length})</h3><p class="layer-note">Checked spots will be updated to the incoming version. Uncheck any you want to keep as they are here.</p><ul class="spot-list">${changedRows}</ul>` : ''}
       <div class="mk-actions"><button class="primary" id="impYes"></button><button id="impNo">No thanks</button></div>`;
     const yes = document.getElementById('impYes');
     const label = () => {
       const u = body.querySelectorAll('input[data-i]:checked').length;
       const parts = [fresh.length ? `Add ${fresh.length}` : '', u ? `update ${u}` : ''].filter(Boolean);
-      yes.textContent = parts.length ? parts.join(' and ').replace(/^./, ch => ch.toUpperCase()) : 'Nothing selected';
-      yes.disabled = !parts.length;
+      const needPick = fresh.length && !body.querySelector('input[name=impas]:checked');
+      yes.textContent = needPick ? 'Choose how to add them' : parts.length ? parts.join(' and ').replace(/^./, ch => ch.toUpperCase()) : 'Nothing selected';
+      yes.disabled = !parts.length || needPick;
     };
-    body.querySelectorAll('input[data-i]').forEach(cb => cb.addEventListener('change', label));
+    body.querySelectorAll('input[data-i], input[name=impas]').forEach(cb => cb.addEventListener('change', label));
     label();
     yes.onclick = () => {
       const now = Date.now(), touched = [];
       fresh.forEach((m, i) => {
         const { photos, ...spot } = m;
-        const rec = { ...spot, id: 'm' + (now + i).toString(36) + Math.random().toString(36).slice(2, 6), locked: true, created: now, updated: m.updated || now };
+        const as = (body.querySelector('input[name=impas]:checked') || {}).value;
+        const status = as === 'keep' ? (STATUS[spot.status] ? spot.status : 'mine') : as;
+        const rec = { ...spot, status, reason: status === 'avoid' ? spot.reason || '' : '', history: [{ s: status, t: now }],
+          id: 'm' + (now + i).toString(36) + Math.random().toString(36).slice(2, 6), locked: true, created: now, updated: m.updated || now };
         myMarkers.push(rec); touched.push(rec);
         if (photos && photos.length) savePhotosFromImport(rec.id, photos);
       });
       body.querySelectorAll('input[data-i]:checked').forEach(cb => {
         const { incoming, mine } = changed[+cb.dataset.i];
         if (incoming.photos && incoming.photos.length) PhotoDB.forSpot(mine.id).then(l => { if (!l.length) savePhotosFromImport(mine.id, incoming.photos); }).catch(() => { });
-        Object.assign(mine, { name: incoming.name, cat: incoming.cat, type: incoming.type, notes: incoming.notes, date: incoming.date,
+        if (incoming.status && incoming.status !== mine.status) (mine.history = mine.history || []).push({ s: incoming.status, t: now });
+        Object.assign(mine, { status: incoming.status || mine.status, reason: incoming.reason || '', name: incoming.name, cat: incoming.cat, type: incoming.type, notes: incoming.notes, date: incoming.date,
           lat: incoming.lat, lon: incoming.lon, updated: incoming.updated || now });
         touched.push(mine);
       });
@@ -1664,7 +1764,8 @@ document.getElementById('restoreFile').addEventListener('change', async e => {
   try {
     const data = JSON.parse(await f.text());
     const list = (Array.isArray(data) ? data : data.markers || []).filter(m => m && isFinite(m.lat) && isFinite(m.lon)).map(m => ({
-      name: String(m.name || 'Saved spot').slice(0, 80), cat: CATS[m.cat] ? m.cat : 'general', type: String(m.type || '').slice(0, 40),
+      status: STATUS[m.status] ? m.status : (m.cat === 'avoid' ? 'avoid' : ''), reason: String(m.reason || (m.cat === 'avoid' ? m.type || '' : '')).slice(0, 40),
+      name: String(m.name || 'Saved spot').slice(0, 80), cat: CATS[m.cat] ? m.cat : 'general', type: m.cat === 'avoid' ? '' : String(m.type || '').slice(0, 40),
       notes: String(m.notes || '').slice(0, 2000), lat: +m.lat, lon: +m.lon, date: /^\d{4}-\d{2}-\d{2}$/.test(m.date || '') ? m.date : '',
       updated: +m.updated || +m.created || 0,
       photos: Array.isArray(m.photos) ? m.photos.slice(0, MAX_PHOTOS) : undefined
@@ -2520,6 +2621,22 @@ async function shareFileWithPhotos(list) {
   const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = name;
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
+
+
+// ---------- Moving a spot between To try / My spots / Avoid ----------
+function moveSpot(m, status, reason) {
+  m.status = status; m.reason = status === 'avoid' ? (reason || '') : '';
+  m.updated = Date.now();
+  (m.history = m.history || []).push({ s: status, t: m.updated });
+  if (!saveMarkers()) return;
+  drawMine();
+  if (!statusShow[status]) flashHint(`Moved to ${STATUS[status].plural} (hidden on the map by your My markers settings)`);
+  openMarker(m.id);
+}
+document.querySelectorAll('[data-st]').forEach(cb => {
+  cb.checked = !!statusShow[cb.dataset.st];
+  cb.addEventListener('change', () => setStatusShow(cb.dataset.st, cb.checked));
+});
 
 function updateWetNote() {
   document.getElementById('wetZoomNote').style.display = map.getZoom() < WET_MIN_ZOOM ? '' : 'none';
